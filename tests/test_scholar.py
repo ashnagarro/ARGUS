@@ -205,7 +205,36 @@ def test_offline_cache_miss_and_model_error_are_clear(tmp_path: Path) -> None:
     assert failed.status == "needs_human"
     assert failed.ai_calls == 1
     assert "synthetic-secret-in-error" not in (tmp_path / "traces" / "api-failed.jsonl").read_text(encoding="utf-8")
-    assert "API request failed or timed out" in failed.ask_you[0]
+    assert "client request failed before a response" in failed.ask_you[0]
+
+
+@pytest.mark.parametrize("status", [400, 401, 429])
+def test_live_http_error_reports_safe_status_without_secret(tmp_path: Path, status: int) -> None:
+    class StatusResponses:
+        def create(self, **_: object) -> None:
+            error = RuntimeError("synthetic-secret-in-error-message")
+            error.status_code = status
+            error.type = "syntheticsecretwithoutpunctuation"
+            error.code = "syntheticsecretwithoutpunctuation"
+            error.param = "syntheticsecretwithoutpunctuation"
+            raise error
+
+    result = research_changes(
+        [_change()], [], documents=load_corpus(FIXTURES), live=True,
+        client=SimpleNamespace(responses=StatusResponses()),
+        run_id=f"http-{status}", trace_dir=tmp_path / "traces",
+        cache_dir=tmp_path / "cache", permissions_path=POLICY, schema_path=SCHEMA,
+    )
+
+    assert result.status == "needs_human"
+    assert f"HTTP {status}" in result.ask_you[0]
+    trace = (tmp_path / "traces" / f"http-{status}.jsonl").read_text(encoding="utf-8")
+    assert '"event": "api_error"' in trace
+    assert f'"status_code": {status}' in trace
+    assert "synthetic-secret" not in trace
+    assert "syntheticsecretwithoutpunctuation" not in trace
+    assert "synthetic-secret" not in result.ask_you[0]
+    assert "syntheticsecretwithoutpunctuation" not in result.ask_you[0]
 
 
 def test_permission_policy_is_fail_closed_and_cache_redacts_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

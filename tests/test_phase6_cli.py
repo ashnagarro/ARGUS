@@ -62,7 +62,7 @@ def test_verified_scholar_finding_reaches_report_and_last_run(
     assert last["ai_calls"] == 2
 
 
-def test_scholar_needs_human_is_not_a_successful_check(tmp_path: Path, monkeypatch) -> None:
+def test_scholar_needs_human_is_not_a_successful_check(tmp_path: Path, monkeypatch, capsys) -> None:
     corpus = tmp_path / "corpus"
     corpus.mkdir()
     (corpus / "synthetic.md").write_bytes(
@@ -82,6 +82,12 @@ def test_scholar_needs_human_is_not_a_successful_check(tmp_path: Path, monkeypat
     )
 
     assert code == 2
-    assert "No cached answer; review the change." in (
-        tmp_path / "reports" / "latest.md"
+    report = (tmp_path / "reports" / "latest.md").read_text(encoding="utf-8")
+    assert "No cached answer; review the change." in report
+    assert "**Decision status:** NEEDS HUMAN" in report
+    assert "**Provisional verdict:** GO" in report
+    assert "**Verdict:** GO" not in report
+    assert "Decision status: NEEDS HUMAN" in capsys.readouterr().out
+    assert "Decision status:</strong> NEEDS HUMAN" in (
+        tmp_path / "reports" / "latest.html"
     ).read_text(encoding="utf-8")

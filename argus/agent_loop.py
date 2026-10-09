@@ -11,6 +11,7 @@ from time import perf_counter
 from typing import Any, Callable, Mapping
 
 import jsonschema
+from openai import APIConnectionError, APIStatusError, APITimeoutError
 
 from .corpus import Document, read_section, search_corpus
 from .models import Change
@@ -118,6 +119,36 @@ def is_model_unavailable(error: BaseException) -> bool:
         nested = body.get("error")
         code = code or body.get("code") or (nested.get("code") if isinstance(nested, dict) else None)
     return code == "model_not_found" or status == 404
+
+
+def _api_error_details(error: BaseException) -> dict[str, str | int]:
+    """Return fixed diagnostic metadata without server-supplied text."""
+    details: dict[str, str | int] = {}
+    status = getattr(error, "status_code", None)
+    if isinstance(error, APITimeoutError):
+        details["category"] = "timeout"
+    elif isinstance(error, APIConnectionError):
+        details["category"] = "connection"
+    elif isinstance(error, APIStatusError) or (type(status) is int and 100 <= status <= 599):
+        details["category"] = "api_status"
+    else:
+        details["category"] = "unexpected"
+    if type(status) is int and 100 <= status <= 599:
+        details["status_code"] = status
+    return details
+
+
+def _api_error_summary(details: Mapping[str, str | int]) -> str:
+    """Give the user an actionable category without exposing server text."""
+    category = details["category"]
+    if category == "timeout":
+        return "Scholar API timed out; review this change."
+    if category == "connection":
+        return "Scholar could not connect to the OpenAI API; review this change."
+    if category == "api_status":
+        status = f"HTTP {details['status_code']}" if "status_code" in details else "HTTP error"
+        return f"Scholar API request failed ({status}); review this change."
+    return "Scholar client request failed before a response; review this change."
 
 
 def _execute_tool(
@@ -232,9 +263,12 @@ def run_agent_loop(
         except Exception as error:
             if is_model_unavailable(error):
                 raise
+            details = _api_error_details(error)
+            append_trace(trace_path, {
+                "event": "api_error", "resource": change.address, **details,
+            })
             return finish(
-                "needs_human", None,
-                "Scholar API request failed or timed out; review this change.",
+                "needs_human", None, _api_error_summary(details),
             )
         records.append(_record_response(response))
         if clock() - started >= MAX_SECONDS:

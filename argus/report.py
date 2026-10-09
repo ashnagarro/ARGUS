@@ -23,6 +23,7 @@ class Report:
     conditions: tuple[str, ...]
     trace_steps: tuple[str, ...] = ()
     ask_you: tuple[str, ...] = ()
+    review_status: str = "complete"
 
 
 def _single_line(value: str) -> str:
@@ -78,9 +79,15 @@ def _evidence_lines(finding: AIFinding) -> list[str]:
 def render_terminal(report: Report) -> str:
     """Render a plain-text report for console output."""
     verified, unverified = _ai_groups(report)
+    verdict_lines = (
+        ["Decision status: NEEDS HUMAN (Scholar review incomplete)",
+         f"Provisional verdict: {_single_line(report.verdict)}"]
+        if report.review_status == "needs_human"
+        else [f"Verdict: {_single_line(report.verdict)}"]
+    )
     lines = [
         "ARGUS report",
-        f"Verdict: {_single_line(report.verdict)}",
+        *verdict_lines,
         f"Run at: {_single_line(report.run_at)}",
         f"Elapsed: {report.elapsed_seconds:.2f} seconds",
         f"AI calls: {report.ai_calls}",
@@ -150,10 +157,16 @@ def render_terminal(report: Report) -> str:
 def render_markdown(report: Report) -> str:
     """Render a Markdown report for reports/latest.md."""
     verified, unverified = _ai_groups(report)
+    verdict_lines = (
+        ["**Decision status:** NEEDS HUMAN (Scholar review incomplete)",
+         f"**Provisional verdict:** {_markdown_text(report.verdict)}"]
+        if report.review_status == "needs_human"
+        else [f"**Verdict:** {_markdown_text(report.verdict)}"]
+    )
     lines = [
         "# ARGUS report",
         "",
-        f"**Verdict:** {_markdown_text(report.verdict)}",
+        *verdict_lines,
         f"**Run at:** {_markdown_text(report.run_at)}",
         f"**Elapsed:** {report.elapsed_seconds:.2f} seconds",
         f"**AI calls:** {report.ai_calls}",
@@ -305,6 +318,12 @@ def render_html(report: Report) -> str:
         for number, step in enumerate(report.trace_steps, 1)
     ]
     ask_items = [f"<li>{_html_text(item)}</li>" for item in _ask_items(report)]
+    verdict_html = (
+        "<strong>Decision status:</strong> NEEDS HUMAN (Scholar review incomplete)<br>"
+        f"<strong>Provisional verdict:</strong> {_html_text(report.verdict)}<br>"
+        if report.review_status == "needs_human"
+        else f"<strong>Verdict:</strong> {_html_text(report.verdict)}<br>"
+    )
     return (
         "<!doctype html>\n<html lang=\"en\">\n<head>\n"
         "<meta charset=\"utf-8\">\n"
@@ -317,7 +336,7 @@ def render_html(report: Report) -> str:
         "q{overflow-wrap:anywhere}span{display:block}strong{font-weight:700}"
         "</style>\n</head>\n<body>\n<main>\n"
         "<h1>ARGUS report</h1>\n"
-        f"<p><strong>Verdict:</strong> {_html_text(report.verdict)}<br>"
+        f"<p>{verdict_html}"
         f"<strong>Run at:</strong> {_html_text(report.run_at)}<br>"
         f"<strong>Elapsed:</strong> {report.elapsed_seconds:.2f} seconds<br>"
         f"<strong>AI calls:</strong> {report.ai_calls}<br>"

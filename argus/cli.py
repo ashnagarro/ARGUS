@@ -236,6 +236,7 @@ def run_check(
         conditions=merge_conditions(rule_findings, ai_findings),
         trace_steps=trace_steps,
         ask_you=ask_you,
+        review_status=scholar_status,
     )
     write_reports(report, report_dir)
     latest = PROJECT_ROOT / ".cache" / "last_run.json"
