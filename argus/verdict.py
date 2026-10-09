@@ -29,7 +29,7 @@ def merge_conditions(
 ) -> tuple[str, ...]:
     """Describe the actions needed before a change can merge."""
     conditions = [
-        f"Resolve {finding.rule_id} on {finding.resource}: {finding.message}"
+        finding.how_to_fix or finding.message
         for finding in rule_findings
         if not finding.waived and finding.severity.lower() in _BLOCKING_SEVERITIES
     ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import json
 import subprocess
@@ -60,8 +61,14 @@ def finding(*, verified: bool = True) -> AIFinding:
 
 
 def write_generated(project: Path) -> None:
+    approved_on = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
     (project / "argus/rules/r007.py").write_text(
-        '"""R007: synthetic, retrieved_at 2026-10-09."""\n',
+        '"""R007: synthetic, retrieved_at 2026-10-09."""\n'
+        'class GeneratedRule:\n'
+        '    source_finding_id = "AI-01"\n'
+        f'    human_approved_on = "{approved_on}"\n'
+        '    why_it_matters = "Synthetic reason."\n'
+        '    how_to_fix = "Set a compatible parameter group."\n',
         encoding="utf-8",
     )
     (project / "tests/rules/test_r007.py").write_text(

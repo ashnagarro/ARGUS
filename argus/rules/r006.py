@@ -12,6 +12,8 @@ class BackupRetentionReduced(Rule):
     severity = "high"
     controls = ()
     source_doc_ids = ()
+    why_it_matters = "Shorter backup retention reduces the time available to restore lost data."
+    how_to_fix = "Keep backup_retention_period at or above its previous value."
 
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         before = (change.before or {}).get("backup_retention_period")

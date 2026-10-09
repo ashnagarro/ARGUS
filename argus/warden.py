@@ -63,6 +63,9 @@ def check_agent_files(
                 rule_id="W001", resource=file,
                 title="Agent file outside allowed scope", severity="critical",
                 message=f"Agent {name} is not allowed to change {file}.",
+                headline=f"Agent {name} changed {file} outside its allowed scope",
+                why_it_matters="An agent editing files outside its allowlist can bypass its assigned boundary.",
+                how_to_fix=f"Have the authorized owner make the change, or move it into {name}'s approved scope.",
             ))
     return tuple(findings)
 

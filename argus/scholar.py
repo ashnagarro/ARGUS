@@ -115,6 +115,9 @@ def _as_findings(payload: dict[str, Any], change: Change, documents: Mapping[str
             severity=item["severity"],
             recommended_action=item["recommended_action"],
             confidence=item["confidence"],
+            headline=item["claim"],
+            tags={key: change.tags[key] for key in ("env", "data_classification", "owner")
+                  if key in change.tags},
             verified=verified,
             verification_reason=reason,
         ))
@@ -201,7 +204,12 @@ def research_changes(
         if result.status != "complete":
             status = "needs_human"
         elif result.payload is not None:
-            all_findings.extend(_as_findings(result.payload, change, documents))
+            verified_findings = _as_findings(result.payload, change, documents)
+            all_findings.extend(verified_findings)
+            if any(finding.verified for finding in verified_findings):
+                append_trace(trace_path, {"event": "verified_answer_stop",
+                                          "resource": change.address})
+                break
 
     return ScholarResult(
         findings=tuple(all_findings),

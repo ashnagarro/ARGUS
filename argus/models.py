@@ -30,6 +30,12 @@ class RuleFinding:
     message: str
     controls: tuple[str, ...] = ()
     source_doc_ids: tuple[str, ...] = ()
+    headline: str = ""
+    tags: dict[str, str] | None = None
+    why_it_matters: str = ""
+    how_to_fix: str = ""
+    source_finding_id: str = ""
+    human_approved_on: str = ""
     waived: bool = False
     waiver_reason: str | None = None
     waiver_expires: str | None = None
@@ -48,3 +54,5 @@ class AIFinding:
     evidence: tuple[dict[str, str], ...] = ()
     change_type: str = ""
     confidence: str = ""
+    headline: str = ""
+    tags: dict[str, str] | None = None

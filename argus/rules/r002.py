@@ -12,6 +12,8 @@ class DeletionProtectionDisabled(Rule):
     severity = "high"
     controls = ()
     source_doc_ids = ()
+    why_it_matters = "Disabling deletion protection makes an accidental database deletion easier."
+    how_to_fix = "Keep deletion_protection = true on the database resource."
 
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         before = change.before or {}

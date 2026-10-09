@@ -36,6 +36,8 @@ class R004PublicDatabasePort(Rule):
     severity = "high"
     controls = ()
     source_doc_ids = ()
+    why_it_matters = "A public database port exposes the service to connections from the internet."
+    how_to_fix = "Replace 0.0.0.0/0 in cidr_blocks with the approved private CIDR ranges."
 
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         """Check planned ingress on a security group or ingress rule."""

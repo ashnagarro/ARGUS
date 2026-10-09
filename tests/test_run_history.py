@@ -107,5 +107,6 @@ def test_from_replays_offline_and_live_act3_baseline_is_cached(
     demo_plan.parent.mkdir(parents=True)
     demo_plan.write_bytes(ACT3.read_bytes())
     assert cli.main(["demo", "act3"]) == 0
-    assert (f"before: 4 AI calls, {baseline['elapsed_seconds']:.2f} s  ->  "
-            "after: 0 AI calls, 0.00 s") in capsys.readouterr().out
+    assert ("AI advice (act2) -> learned, enforced rule (act3): "
+            f"4 AI calls / {baseline['elapsed_seconds']:.2f} s "
+            "-> 0 AI calls / 0.00 s") in capsys.readouterr().out

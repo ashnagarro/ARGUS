@@ -55,6 +55,8 @@ def test_demo_all_has_stable_verdicts_and_cached_comparison(
         output = capsys.readouterr().out
         assert re.findall(r"^Verdict: (.+)$", output, re.MULTILINE) == expected
         assert all(f"=== ACT{number} ===" in output for number in (1, 2, 3, 5))
-        assert "before: 13 AI calls, 42.51 s  ->  after: 0 AI calls, 0.00 s" in output
+        assert ("AI advice (act2) -> learned, enforced rule (act3): "
+                "13 AI calls / 42.51 s -> 0 AI calls / 0.00 s") in output
+        assert "Warden blocked agent:landing-zone: argus/rules/r007.py is outside" in output
         assert "Active exception: WAIVED" in output
         assert "Expired exception: NO-GO" in output

@@ -12,6 +12,8 @@ class StorageEncryptionDisabled(Rule):
     severity = "high"
     controls = ()
     source_doc_ids = ()
+    why_it_matters = "Disabling storage encryption leaves stored data without encryption at rest."
+    how_to_fix = "Keep storage_encrypted = true or encrypted = true on the affected resource."
 
     _encryption_fields = ("storage_encrypted", "encrypted")
 

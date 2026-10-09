@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 import importlib
@@ -118,7 +118,8 @@ def _next_rule_id(root: Path) -> str:
     return f"R{max(numbers, default=0) + 1:03d}"
 
 
-def _prompt(finding: AIFinding, rule_id: str, attempt: int, failures: str) -> str:
+def _prompt(finding: AIFinding, rule_id: str, attempt: int, failures: str,
+            approved_on: str) -> str:
     rule_slug = rule_id.lower()
     evidence = [
         {
@@ -145,6 +146,9 @@ def _prompt(finding: AIFinding, rule_id: str, attempt: int, failures: str) -> st
         "Use the normalized Change fields, never raw Terraform plan JSON. "
         "Subclass argus.rules.Rule and give it the assigned rule ID. "
         "The rule module docstring must cite every evidence doc_id and retrieved_at date. "
+        f"The Rule subclass must declare source_finding_id = {finding.id!r} and "
+        f"human_approved_on = {approved_on!r}. "
+        "Declare why_it_matters as one sentence and how_to_fix as concrete Terraform advice. "
         "The positive test must load fixtures/plans/act2_major_upgrade.json; "
         "the negative test must load fixtures/plans/clean_change.json. "
         "Each test file needs one test that triggers and one that does not. "
@@ -155,7 +159,8 @@ def _prompt(finding: AIFinding, rule_id: str, attempt: int, failures: str) -> st
     )
 
 
-def _validate_generated(root: Path, rule_id: str, finding: AIFinding) -> str | None:
+def _validate_generated(root: Path, rule_id: str, finding: AIFinding,
+                        approved_on: str) -> str | None:
     slug = rule_id.lower()
     rule_path = root / "argus" / "rules" / f"{slug}.py"
     test_path = root / "tests" / "rules" / f"test_{slug}.py"
@@ -173,6 +178,18 @@ def _validate_generated(root: Path, rule_id: str, finding: AIFinding) -> str | N
     for item in finding.evidence:
         if item["doc_id"] not in docstring or item["retrieved_at"] not in docstring:
             return "Rule docstring does not cite its verified document and retrieval date."
+    classes = [node for node in module.body if isinstance(node, ast.ClassDef)]
+    metadata: dict[str, str] = {}
+    for rule_class in classes:
+        for statement in rule_class.body:
+            if isinstance(statement, ast.Assign) and isinstance(statement.value, ast.Constant):
+                for target in statement.targets:
+                    if isinstance(target, ast.Name) and isinstance(statement.value.value, str):
+                        metadata[target.id] = statement.value.value
+    if (metadata.get("source_finding_id") != finding.id
+            or metadata.get("human_approved_on") != approved_on
+            or not metadata.get("why_it_matters") or not metadata.get("how_to_fix")):
+        return "Rule must declare its source finding, approval date, why_it_matters, and how_to_fix."
     for fixture in ("act2_major_upgrade.json", "clean_change.json"):
         if fixture not in test_text:
             return f"Generated test does not use {fixture}."
@@ -288,6 +305,7 @@ def compile_finding(
     _append_trace(trace_path, {"event": "human_approval", "granted": granted})
     if not granted:
         return finish("Human approval is required for Smith to write a rule.")
+    approved_on = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
 
     for attempt in range(1, 4):
         attempts = attempt
@@ -309,7 +327,7 @@ def compile_finding(
                                    "tool": "codex exec", "reasoning_effort": "high"})
         try:
             invocation = runner(
-                command, input=_prompt(finding, rule_id, attempt, previous_failure),
+                command, input=_prompt(finding, rule_id, attempt, previous_failure, approved_on),
                 cwd=root, env=environment, text=True, capture_output=True, timeout=180,
             )
             output = _secret_free(
@@ -341,7 +359,7 @@ def compile_finding(
             _append_trace(trace_path, {"event": "attempt_failure", "attempt": attempt,
                                        "reason": _secret_free(previous_failure, environment)})
             continue
-        validation_error = _validate_generated(root, rule_id, finding)
+        validation_error = _validate_generated(root, rule_id, finding, approved_on)
         if validation_error:
             previous_failure = validation_error
             _append_trace(trace_path, {"event": "attempt_failure", "attempt": attempt,

@@ -12,6 +12,8 @@ class R003SkipFinalSnapshot(Rule):
     severity = "high"
     controls = ()
     source_doc_ids = ()
+    why_it_matters = "Skipping the final snapshot can leave no restore point when the database is deleted."
+    how_to_fix = "Set skip_final_snapshot = false and configure final_snapshot_identifier before deletion."
 
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         """Flag a database configured to skip its final snapshot."""

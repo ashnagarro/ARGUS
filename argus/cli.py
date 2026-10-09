@@ -190,8 +190,9 @@ def _baseline() -> dict:
 
 
 def _comparison(baseline: dict) -> str:
-    return (f"before: {baseline['ai_calls']} AI calls, "
-            f"{baseline['elapsed_seconds']:.2f} s  ->  after: 0 AI calls, 0.00 s")
+    return ("AI advice (act2) -> learned, enforced rule (act3): "
+            f"{baseline['ai_calls']} AI calls / {baseline['elapsed_seconds']:.2f} s "
+            "-> 0 AI calls / 0.00 s")
 
 
 def run_compile(
@@ -465,6 +466,8 @@ def run_demo(scenario: str = "all", *, live: bool = False) -> int:
             if warden is None:
                 print("Ask you: Warden finding W001 is missing.")
                 return 2
+            print("Warden blocked agent:landing-zone: argus/rules/r007.py is outside its "
+                  "allowed infra/landing-zone/** scope.")
             today = datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
             exception = ({
                 "rule_id": "W001", "resource": warden.resource,

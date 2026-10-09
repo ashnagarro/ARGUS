@@ -21,6 +21,11 @@ class SqlServerMajorUpgradeParameterGroup(Rule):
     title = "SQL Server major upgrade retains parameter group"
     severity = "high"
     source_doc_ids = ("rds-sqlserver-upgrade-considerations",)
+    why_it_matters = "A major SQL Server upgrade using the old custom parameter group can apply incompatible settings."
+    how_to_fix = ("Create a parameter group for the target major version, preserve the required custom "
+                  "settings, and update parameter_group_name in the same Terraform change.")
+    source_finding_id = "F1"
+    human_approved_on = "2026-10-09"
 
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         if (change.resource_type != "aws_db_instance"

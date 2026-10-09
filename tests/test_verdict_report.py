@@ -38,7 +38,7 @@ def ai_finding(verified: bool, claim: str = "A sourced concern") -> AIFinding:
 def test_high_or_critical_rule_blocks_even_with_verified_ai() -> None:
     findings = (rule_finding(),)
     assert decide_verdict(findings, (ai_finding(True),)) == "NO-GO"
-    assert "Resolve R001" in merge_conditions(findings)[0]
+    assert merge_conditions(findings)[0] == "identifier causes replacement"
 
 
 def test_verified_ai_adds_a_condition() -> None:

@@ -17,6 +17,10 @@ class Rule(ABC):
     severity: ClassVar[str]
     controls: ClassVar[tuple[str, ...]] = ()
     source_doc_ids: ClassVar[tuple[str, ...]] = ()
+    why_it_matters: ClassVar[str]
+    how_to_fix: ClassVar[str]
+    source_finding_id: ClassVar[str] = ""
+    human_approved_on: ClassVar[str] = ""
 
     @abstractmethod
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
@@ -24,6 +28,13 @@ class Rule(ABC):
 
     def finding(self, change: Change, message: str) -> RuleFinding:
         """Create a finding with this rule's metadata."""
+        tags = {key: change.tags[key] for key in ("env", "data_classification", "owner")
+                if key in change.tags}
+        headline = self.title
+        if self.id == "R001" and change.canonical_type in ("database_instance", "database_cluster"):
+            environment = "Production" if tags.get("env", "").lower() in ("prod", "production") else "A"
+            classification = " holding PII" if "pii" in tags.get("data_classification", "").lower() else ""
+            headline = f"{environment} database{classification} will be deleted and recreated"
         return RuleFinding(
             rule_id=self.id,
             resource=change.address,
@@ -32,6 +43,10 @@ class Rule(ABC):
             message=message,
             controls=self.controls,
             source_doc_ids=self.source_doc_ids,
+            headline=headline, tags=tags,
+            why_it_matters=self.why_it_matters, how_to_fix=self.how_to_fix,
+            source_finding_id=self.source_finding_id,
+            human_approved_on=self.human_approved_on,
         )
 
 
