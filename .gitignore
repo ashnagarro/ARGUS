@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 backup/
 .codex-home/
+reports/latest.md
+reports/latest.html

@@ -30,3 +30,18 @@ class RuleFinding:
     message: str
     controls: tuple[str, ...] = ()
     source_doc_ids: tuple[str, ...] = ()
+
+@dataclass(frozen=True, slots=True)
+class AIFinding:
+    """An AI claim and its code-verified status for reporting."""
+
+    id: str
+    resource: str
+    claim: str
+    severity: str
+    recommended_action: str
+    verified: bool
+    verification_reason: str | None = None
+    evidence: tuple[dict[str, str], ...] = ()
+    change_type: str = ""
+    confidence: str = ""
