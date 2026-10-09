@@ -43,6 +43,7 @@ def test_verified_scholar_finding_reaches_report_and_last_run(
             ask_you=(), status="complete", run_id=kwargs["run_id"],
         )
     monkeypatch.setattr(scholar, "research_changes", fake_research)
+    monkeypatch.setattr(cli, "run_rules", lambda changes: [])
 
     report_dir = tmp_path / "reports"
     code = cli.run_check(
