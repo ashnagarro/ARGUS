@@ -33,6 +33,7 @@ class Report:
     replayed_from_run_id: str | None = None
     original_ai_calls: int | None = None
     original_elapsed_seconds: float | None = None
+    upgrade_check: bool = False
 
 
 def _single_line(value: str) -> str:
@@ -162,7 +163,7 @@ def render_terminal(report: Report) -> str:
     ]
     if verdict_explanation(report.verdict):
         lines.insert(2, verdict_explanation(report.verdict))
-    if report.ai_findings:
+    if report.ai_findings and not report.upgrade_check:
         lines.append(ADVISORY_NOTICE)
     lines.extend(["", "RULE"])
     if report.rule_findings:
@@ -247,7 +248,7 @@ def render_markdown(report: Report) -> str:
     ]
     if verdict_explanation(report.verdict):
         lines.insert(3, _markdown_text(verdict_explanation(report.verdict)))
-    if report.ai_findings:
+    if report.ai_findings and not report.upgrade_check:
         lines.extend(["", _markdown_text(ADVISORY_NOTICE)])
     lines.extend(["", "## RULE", ""])
     if report.rule_findings:
@@ -424,7 +425,8 @@ def render_html(report: Report) -> str:
     sections += f"<section><h2>Ask you</h2>{_html_group(ask_items)}</section>\n"
     banner = {"NO-GO": "no-go", "GO-WITH-CONDITIONS": "conditions",
               "GO": "go"}.get(report.verdict, "needs-human")
-    advisory = f"<p class=\"advisory\">{_html_text(ADVISORY_NOTICE)}</p>" if report.ai_findings else ""
+    advisory = (f"<p class=\"advisory\">{_html_text(ADVISORY_NOTICE)}</p>"
+                if report.ai_findings and not report.upgrade_check else "")
     return (
         "<!doctype html>\n<html lang=\"en\">\n<head>\n"
         "<meta charset=\"utf-8\">\n"

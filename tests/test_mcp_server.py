@@ -31,7 +31,7 @@ def _isolated_project(tmp_path: Path, monkeypatch) -> Path:
 def test_mcp_tool_schemas_and_mocked_transport(monkeypatch) -> None:
     tools = asyncio.run(mcp_server.mcp.list_tools())
     names = {tool.name for tool in tools}
-    assert {"argus_check", "argus_explain"} <= names
+    assert {"argus_check", "argus_upgrade_check", "argus_explain"} <= names
     check = next(tool for tool in tools if tool.name == "argus_check")
     assert set(check.input_schema["required"]) == {"plan_path"}
     assert check.input_schema["properties"]["live"]["type"] == "boolean"
@@ -61,7 +61,7 @@ def test_mcp_launcher_from_agent_demo() -> None:
                 response = await session.list_tools()
                 return {tool.name for tool in response.tools}
 
-    assert {"argus_check", "argus_explain"} <= asyncio.run(list_tools())
+    assert {"argus_check", "argus_upgrade_check", "argus_explain"} <= asyncio.run(list_tools())
 
 
 def test_mcp_check_resolves_plan_paths_from_agent_demo(tmp_path: Path, monkeypatch) -> None:

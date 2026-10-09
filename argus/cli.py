@@ -24,6 +24,8 @@ from .rules import load_rules, resolve_rule_id, run_rules
 from .verdict import decide_verdict, merge_conditions, verdict_explanation, verdict_label
 from .verify import verify_quote
 from .warden import apply_exceptions, check_agent_files, load_agents, load_exceptions
+from .upgrade import (GUIDE_ID, UpgradeSpec, collect_upgrade_changes,
+                      filter_upgrade_findings, resolve_upgrade, seed_demo_replay)
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -88,6 +90,15 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--tf-file", action="append", type=Path, default=[], metavar="PATH",
                        help="Terraform source file to scan for literal secrets (repeatable).")
 
+    upgrade_check = commands.add_parser("upgrade-check", help="Check an AWS provider upgrade against its local guide.")
+    upgrade_check.add_argument("plan", type=Path, help="Terraform plan JSON with a configuration section.")
+    upgrade_check.add_argument("--provider", choices=("aws",), required=True)
+    upgrade_check.add_argument("--from", dest="from_version", help="Current provider version, such as 4.67.0.")
+    upgrade_check.add_argument("--to", dest="to_version", help="Target provider version, such as 5.0.0.")
+    upgrade_check.add_argument("--lock-before", type=Path, help="Lock file with the current provider version.")
+    upgrade_check.add_argument("--lock-after", type=Path, help="Lock file with the target provider version.")
+    upgrade_check.add_argument("--live", action="store_true", help="Research the guide with Scholar; default is offline replay.")
+
     compile_command = commands.add_parser(
         "compile", help="Compile an approved finding into a rule."
     )
@@ -110,7 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument(
         "scenario",
         nargs="?",
-        choices=("all", "act1", "act2", "act3", "act5"),
+        choices=("all", "act1", "act2", "act3", "act5", "act8"),
         help="Scenario to run.",
     )
     demo_mode = demo.add_mutually_exclusive_group()
@@ -355,6 +366,7 @@ def run_check(
     write_artifacts: bool = True,
     emit_output: bool = True,
     check_agent_scope: bool = True,
+    upgrade: UpgradeSpec | None = None,
 ) -> int:
     """Run rules and optionally research uncovered changes with Scholar."""
     if report_dir == Path("reports"):
@@ -396,7 +408,14 @@ def run_check(
                                    if rule_id not in team_policy.mandatory_rule_ids)
     _append_trace(run_id, {"event": "run_start", "mode": scholar_mode or "rules",
                            "disabled_rules": list(disabled_rule_ids)})
-    changes = parse_plan(plan)
+    guide = None
+    if upgrade is None:
+        changes = parse_plan(plan)
+    else:
+        guide = load_corpus(PROJECT_ROOT / "corpus").get(GUIDE_ID)
+        if guide is None:
+            raise ValueError(f"fetch the {GUIDE_ID} guide with argus corpus fetch")
+        changes = collect_upgrade_changes(plan, upgrade, guide)
     if author.startswith("agent:") and not changed_files and check_agent_scope:
         raise ValueError("--changed-files is required for an agent author")
     if changed_files and not author.startswith("agent:"):
@@ -428,7 +447,9 @@ def run_check(
                                "file": file, "decision": decision.decision,
                                "reason": decision.reason})
         permission_asks.append(f"Human approval required for agent change to {file}.")
-    if include_governance:
+    if upgrade is not None:
+        rule_findings = ()
+    elif include_governance:
         from .governance import context_from_settings
         from .team import governance_settings
 
@@ -455,7 +476,7 @@ def run_check(
                 changes, disabled_rule_ids=effective_disabled,
                 enabled_rule_ids=enabled_rule_ids, extra_rules=extra_rules,
             ))
-    if team_policy is not None:
+    if team_policy is not None and upgrade is None:
         from .team import baseline_disable_findings, owner_findings, raise_findings
 
         rule_findings = raise_findings(
@@ -479,6 +500,8 @@ def run_check(
     ai_findings = ()
     ai_calls = 0
     trace_steps: tuple[str, ...] = (
+        f"checked {_counted(len(changes), 'configured resource type')} against the provider upgrade guide"
+        if upgrade is not None else
         f"checked {_counted(len(changes), 'change')} against deterministic rules",
     )
     if author.startswith("agent:") and check_agent_scope:
@@ -498,13 +521,16 @@ def run_check(
         try:
             result = research_changes(
                 changes, () if force_scholar else rule_findings,
-                documents=load_corpus(PROJECT_ROOT / "corpus"),
+                documents={GUIDE_ID: guide} if upgrade is not None and guide is not None
+                          else {doc_id: document for doc_id, document in
+                                load_corpus(PROJECT_ROOT / "corpus").items() if doc_id != GUIDE_ID},
                 model=model, live=scholar_mode == "live", run_id=run_id,
                 cache_dir=PROJECT_ROOT / ".cache" / "scholar",
                 trace_dir=PROJECT_ROOT / "ledger" / "traces",
                 permissions_path=_asset_path("permissions.yaml"),
                 schema_path=_asset_path("schemas/finding.schema.json"),
                 cache_live_responses=write_artifacts,
+                stop_after_verified=upgrade is None,
             )
         except Exception as error:
             scholar_status = "needs_human"
@@ -517,7 +543,8 @@ def run_check(
             else:
                 ask_you = (f"Scholar stopped before completing the review ({error_type}); review this change.",)
         else:
-            ai_findings = tuple(result.findings)
+            ai_findings = (filter_upgrade_findings(result.findings, changes, guide)
+                           if upgrade is not None and guide is not None else tuple(result.findings))
             ai_calls = result.ai_calls
             trace_steps += tuple(result.trace_steps)
             ask_you = tuple(result.ask_you)
@@ -529,7 +556,9 @@ def run_check(
     # A partial Scholar review cannot authorize a merge, even when the
     # deterministic rules found no problem. Keep the final decision closed.
     scholar_incomplete = scholar_mode is not None and scholar_status != "complete"
-    verdict = "NEEDS HUMAN" if scholar_incomplete else decide_verdict(rule_findings, ai_findings)
+    verdict = ("NEEDS HUMAN" if scholar_incomplete else
+               "NO-GO" if upgrade is not None and any(item.verified for item in ai_findings) else
+               decide_verdict(rule_findings, ai_findings) if upgrade is None else "GO")
     if permission_asks and verdict in ("GO", "GO-WITH-CONDITIONS"):
         verdict = "NEEDS HUMAN"
     if scholar_incomplete and not ask_you:
@@ -550,6 +579,7 @@ def run_check(
         replayed_from_run_id=replayed_from_run_id,
         original_ai_calls=original_ai_calls,
         original_elapsed_seconds=original_elapsed_seconds,
+        upgrade_check=upgrade is not None,
     )
     if write_artifacts:
         write_reports(report, report_dir)
@@ -572,6 +602,8 @@ def run_check(
         "trace_steps": list(report.trace_steps),
         "ask_you": list(report.ask_you),
     }
+    if upgrade is not None:
+        run_record["upgrade"] = asdict(upgrade)
     serialized = json.dumps(run_record, sort_keys=True, ensure_ascii=False)
     runs_dir = PROJECT_ROOT / "ledger" / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -642,7 +674,7 @@ def _presentation_html(cards: list[tuple[str, str, str]]) -> str:
 
 def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False) -> int:
     """Show the four planned scenarios with an offline replay by default."""
-    scenarios = ("act1", "act2", "act3", "act5") if scenario == "all" else (scenario,)
+    scenarios = ("act1", "act2", "act3", "act5", "act8") if scenario == "all" else (scenario,)
     plans = PROJECT_ROOT / "fixtures" / "plans"
     cards: list[tuple[str, str, str]] = []
     for name in scenarios:
@@ -724,6 +756,27 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
             cards.append((name, record["verdict"],
                           "Agent landing-zone changed argus/rules/r007.py outside its approved scope; "
                           "an expired exception blocks it again."))
+        elif name == "act8":
+            plan = PROJECT_ROOT / "fixtures" / "upgrades" / "aws_v4_to_v5" / "plan.json"
+            guide = load_corpus(PROJECT_ROOT / "corpus").get(GUIDE_ID)
+            if guide is None:
+                print("Ask you: fetch the AWS provider v5 upgrade guide first.")
+                return 2
+            upgrade = UpgradeSpec("aws", "4.67.0", "5.0.0")
+            if not live:
+                seed_demo_replay(
+                    collect_upgrade_changes(plan, upgrade, guide), guide,
+                    model=_settings().get("scholar", {}).get("model", "gpt-6.1-sol"),
+                    schema_path=_asset_path("schemas/finding.schema.json"),
+                    cache_dir=PROJECT_ROOT / ".cache" / "scholar",
+                )
+            code = run_check(plan, scholar_mode="live" if live else "offline",
+                             governance_enabled=False, team_enabled=False, upgrade=upgrade)
+            if code != 1:
+                print("Ask you: Act 8 did not block the removed provider argument.")
+                return 2
+            cards.append((name, "NO-GO", "AWS provider v5 removes a configured database argument; "
+                          "the local vendor guide supplies the verified quote."))
     if present:
         path = PROJECT_ROOT / "reports" / "presentation.html"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -745,6 +798,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                              approver=args.approver, tf_files=args.tf_file)
         except (OSError, ValueError, RuntimeError) as error:
             print(f"argus check: {error}", file=sys.stderr)
+            return 2
+    if args.command == "upgrade-check":
+        try:
+            upgrade = resolve_upgrade(args.provider, args.from_version, args.to_version,
+                                      args.lock_before, args.lock_after)
+            return run_check(args.plan, scholar_mode="live" if args.live else "offline",
+                             governance_enabled=False, team_enabled=False, upgrade=upgrade)
+        except (OSError, ValueError, RuntimeError, TypeError) as error:
+            print(f"argus upgrade-check: {error}", file=sys.stderr)
             return 2
     if args.command == "compile":
         try:

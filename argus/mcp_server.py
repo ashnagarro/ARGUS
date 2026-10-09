@@ -17,6 +17,7 @@ from .report import finding_detail, finding_label
 from .rules import load_rules, resolve_rule_id
 from .warden import W001_APPLIES_TO, W001_ID, W001_NAME, W001_TITLE
 from .verdict import verdict_explanation, verdict_label
+from .upgrade import UpgradeSpec
 
 
 PROJECT_ROOT = cli.PROJECT_ROOT
@@ -110,6 +111,43 @@ def argus_check(plan_path: str, live: bool = False) -> dict:
         }
     except Exception:
         _log_call("argus_check", run_id=run_id, status="failed")
+        raise
+
+
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
+def argus_upgrade_check(
+    plan_path: str, provider: str, from_version: str, to_version: str, live: bool = False,
+) -> dict:
+    """Check a project-local Terraform plan against the provider upgrade guide."""
+    run_id = uuid4().hex
+    try:
+        plan = Path(plan_path)
+        if not plan.is_absolute():
+            plan = PROJECT_ROOT / plan
+        plan = plan.resolve()
+        if not plan.is_relative_to(PROJECT_ROOT.resolve()):
+            raise ValueError("plan_path must stay inside the ARGUS project")
+        if not plan.is_file() or plan.suffix.lower() != ".json":
+            raise ValueError("plan_path must name an existing JSON file")
+        upgrade = UpgradeSpec(provider, from_version, to_version)
+        _log_call("argus_upgrade_check", run_id=run_id, status="started")
+        cli.run_check(plan, scholar_mode="live" if live else "offline", run_id=run_id,
+                      author="agent:codex", changed_files=(), check_agent_scope=False,
+                      governance_enabled=False, team_enabled=False, upgrade=upgrade,
+                      write_artifacts=False, emit_output=False)
+        record = json.loads((PROJECT_ROOT / "ledger" / "runs" / f"{run_id}.json").read_text(encoding="utf-8"))
+        _log_call("argus_upgrade_check", run_id=run_id, status="completed")
+        return {
+            "verdict": record["verdict"],
+            "verdict_label": verdict_label(record["verdict"]),
+            "verdict_explanation": verdict_explanation(record["verdict"]),
+            "upgrade": record["upgrade"],
+            "findings": [_display_finding(item) for item in record["ai_findings"]],
+            "conditions": record["conditions"],
+            "run_id": run_id,
+        }
+    except Exception:
+        _log_call("argus_upgrade_check", run_id=run_id, status="failed")
         raise
 
 

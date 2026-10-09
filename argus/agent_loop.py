@@ -304,6 +304,14 @@ def run_agent_loop(
         "role": "user",
         "content": f"CHANGE: {json.dumps(asdict(change), sort_keys=True)}",
     }]
+    instructions = _INSTRUCTIONS
+    if change.canonical_type == "provider-upgrade":
+        instructions += (
+            " This is a provider version upgrade. Search the upgrade guide section for the "
+            "resource_type. Report only arguments listed in arguments_used that the guide "
+            "explicitly removes or changes. Quote that exact guide sentence. Ignore unrelated "
+            "resources and arguments, and return no findings when none of the used arguments break."
+        )
     text_format = {
         "format": {
             "type": "json_schema",
@@ -348,7 +356,7 @@ def run_agent_loop(
             response = client.responses.create(
                 model=model,
                 input=input_items,
-                instructions=_INSTRUCTIONS,
+                instructions=instructions,
                 tools=TOOLS,
                 text=text_format,
                 parallel_tool_calls=False,

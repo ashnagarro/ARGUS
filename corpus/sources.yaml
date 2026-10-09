@@ -12,3 +12,5 @@
   url: https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/main/website/docs/r/db_instance.html.markdown
 - doc_id: tf-json-format
   url: https://developer.hashicorp.com/terraform/internals/json-format
+- doc_id: terraform-aws-provider-v5-upgrade
+  url: https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/main/website/docs/guides/version-5-upgrade.html.markdown

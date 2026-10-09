@@ -63,9 +63,14 @@ class _ReplayClient:
 
 
 def _cache_key(change: Change, documents: Mapping[str, Document], model: str, schema: dict[str, Any]) -> str:
+    change_record = asdict(change)
+    # Keep existing replay keys stable for ordinary infrastructure checks.
+    if change.canonical_type != "provider-upgrade":
+        for field in ("provider", "from_version", "to_version", "arguments_used"):
+            change_record.pop(field)
     material = {
         "model": model,
-        "change": asdict(change),
+        "change": change_record,
         "documents": {
             doc_id: sha256(doc.body.encode("utf-8")).hexdigest()
             for doc_id, doc in sorted(documents.items())
@@ -179,6 +184,7 @@ def research_changes(
     schema_path: Path = Path("schemas/finding.schema.json"),
     approval_callback: Callable[[str, str], bool] | None = None,
     cache_live_responses: bool = True,
+    stop_after_verified: bool = True,
 ) -> ScholarResult:
     """Research only changes not already caught by a deterministic rule.
 
@@ -256,7 +262,7 @@ def research_changes(
         elif result.payload is not None:
             verified_findings = _as_findings(result.payload, change, documents)
             all_findings.extend(verified_findings)
-            if any(finding.verified for finding in verified_findings):
+            if stop_after_verified and any(finding.verified for finding in verified_findings):
                 append_trace(trace_path, {"event": "verified_answer_stop",
                                           "resource": change.address})
                 break

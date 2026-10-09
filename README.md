@@ -16,7 +16,8 @@ Keep credentials in environment variables. `OPENAI_API_KEY` is needed only for `
 
 | Feature | State | Configuration |
 | --- | --- | --- |
-| Terraform plan checks, secret redaction, four-act demo, ledger archive, offline console, MCP tools, local web upload | Works now | Core commands; `python -m argus serve --port 8765` binds to 127.0.0.1 |
+| Terraform plan checks, secret redaction, five-act demo, ledger archive, offline console, MCP tools, local web upload | Works now | Core commands; `python -m argus serve --port 8765` binds to 127.0.0.1 |
+| AWS provider 4.x to 5.x upgrade check | Works now for explicit argument changes in the fetched guide | `argus upgrade-check`; see [Act 8 status](docs/ACT8_STATUS.md) |
 | Policy from English, governance rule pack, team overlays | Works now | `policy_compiler`, `governance_pack`, `team_overlays` are enabled in `argus.toml` |
 | CAB brief, rollback notes, compliance mapping, cost delta, learning report, control coverage, CloudFormation adapter | Prototype / roadmap | Their flags are disabled in `argus.toml` |
 | Act 7 real-plan comparison | Prototype / roadmap | The supplied fixed fixture has the same risky resource settings; the attempted Act 7 task was reverted after two failed test gates |
@@ -51,7 +52,7 @@ This uses the existing `CODEX_API_KEY` and `[smith]` settings. Smith asks for ap
 .\.venv\Scripts\python -m argus demo --present
 ```
 
-The offline demo covers stateful replacement, sourced AI advice, an enforced learned rule, and an out-of-scope agent change. `--present` writes a self-contained projector page at `reports/presentation.html`. To record a new act3 before baseline in a PowerShell session with `OPENAI_API_KEY` set, run `argus check fixtures\plans\act3_major_upgrade_second.json --live --disable-rule R007` through the virtual-environment Python executable.
+The offline demo covers stateful replacement, sourced AI advice, an enforced learned rule, an out-of-scope agent change, and a provider upgrade breaking a configured argument. `--present` writes a self-contained projector page at `reports/presentation.html`. To record a new act3 before baseline in a PowerShell session with `OPENAI_API_KEY` set, run `argus check fixtures\plans\act3_major_upgrade_second.json --live --disable-rule R007` through the virtual-environment Python executable.
 
 ## Offline console
 
@@ -79,7 +80,7 @@ The Git package exposes an `argus` command. In a team infrastructure repository,
 
 ## Codex MCP plugin
 
-Register the local MCP server using [docs/CODEX_PLUGIN.md](docs/CODEX_PLUGIN.md). Its two tools check project-local plan JSON and explain saved findings. MCP calls write only ledger records. The synthetic Terraform workflow is in [examples/agent-demo](examples/agent-demo/AGENTS.md).
+Register the local MCP server using [docs/CODEX_PLUGIN.md](docs/CODEX_PLUGIN.md). Its three tools check project-local plan JSON, check provider upgrades, and explain saved findings. MCP calls write only ledger records. The synthetic Terraform workflow is in [examples/agent-demo](examples/agent-demo/AGENTS.md).
 
 ## Corpus and packaging
 

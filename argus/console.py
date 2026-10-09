@@ -284,6 +284,10 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
                  "GO": "go"}.get(verdict, "needs-human")
         target = f"detail-{index}"
         plan = Path(str(record.get("plan", ""))).name
+        upgrade = record.get("upgrade")
+        if isinstance(upgrade, dict):
+            plan = (f"Act 8 · {upgrade.get('provider', '')} "
+                    f"{upgrade.get('from_version', '')} → {upgrade.get('to_version', '')} · {plan}")
         replay_calls = _replay_calls(record, targets, archives)
         rows.append(
             f'<tr id="run-{index}"><td>{_safe(_local_time(str(record.get("run_at", ""))))}</td>'

@@ -18,6 +18,10 @@ class Change:
     tags: dict[str, str]
     is_replace: bool
     source_tool: str = "terraform"
+    provider: str = ""
+    from_version: str = ""
+    to_version: str = ""
+    arguments_used: tuple[str, ...] = ()
 
 @dataclass(frozen=True, slots=True)
 class RuleFinding:
