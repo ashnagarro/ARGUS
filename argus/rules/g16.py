@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class G16ConfigRecorderStopped(Rule):
     id = "G16"
-    title = "AWS Config recorder stopped"
+    name = "configuration-recording-stopped"
+    title = "Configuration recording stopped"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "A stopped recorder cannot capture configuration changes for review."
     how_to_fix = "Keep aws_config_configuration_recorder_status and set is_enabled = true."

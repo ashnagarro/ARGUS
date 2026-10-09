@@ -12,7 +12,9 @@ from ._governance import ContextRule
 
 class ApprovedRegion(ContextRule):
     id = "G22"
-    title = "Region not approved"
+    name = "unapproved-region"
+    title = "Resource placed outside approved regions"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "A resource outside approved regions may breach placement requirements."
     how_to_fix = "Use a region listed in the organization's governance configuration."

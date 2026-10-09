@@ -8,13 +8,16 @@ from argus.models import Change
 
 
 _CANONICAL_TYPES = {
-    "aws_db_instance": "database_instance",
-    "aws_rds_cluster": "database_cluster",
-    "aws_db_parameter_group": "database_parameter_group",
-    "aws_ebs_volume": "block_volume",
-    "aws_security_group": "network_security_group",
-    "aws_security_group_rule": "network_security_rule",
-    "aws_s3_bucket": "object_bucket",
+    "aws_db_instance": "data_store",
+    "aws_rds_cluster": "data_store",
+    "aws_ebs_volume": "data_store",
+    "aws_s3_bucket": "data_store",
+    "aws_security_group": "network_ingress",
+    "aws_security_group_rule": "network_ingress",
+    "aws_vpc_security_group_ingress_rule": "network_ingress",
+    "aws_s3_bucket_server_side_encryption_configuration": "encryption_config",
+    "aws_backup_plan": "backup_config",
+    "aws_db_parameter_group": "engine_config",
 }
 
 

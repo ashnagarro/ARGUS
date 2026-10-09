@@ -12,7 +12,9 @@ from ._governance import ContextRule
 
 class AgentLedgerEntry(ContextRule):
     id = "G29"
-    title = "Agent change has no ledger entry"
+    name = "agent-change-without-audit-record"
+    title = "Agent change has no audit record"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "An agent change without a ledger record cannot be audited."
     how_to_fix = "Record the agent review and its verdict in the ARGUS ledger."

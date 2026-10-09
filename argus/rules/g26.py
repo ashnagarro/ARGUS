@@ -19,7 +19,9 @@ _HARDCODED = re.compile(
 
 class HardcodedTerraformSecret(ContextRule):
     id = "G26"
-    title = "Hardcoded secret in Terraform"
+    name = "hardcoded-secret"
+    title = "Secret embedded in infrastructure code"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "A literal credential in Terraform source can be exposed through code review or state."
     how_to_fix = "Remove the literal credential and use a managed secret reference."

@@ -29,7 +29,9 @@ def _has_wildcard(value: object) -> bool:
 
 class IAMUnrestrictedPolicy(Rule):
     id = "G08"
-    title = "IAM policy grants all actions on all resources"
+    name = "unrestricted-access-policy"
+    title = "Access policy grants unrestricted permissions"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "An unrestricted IAM policy can grant control over every supported AWS resource."
     how_to_fix = "Replace wildcard actions and resources with the specific permissions the identity needs."

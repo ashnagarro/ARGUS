@@ -10,7 +10,9 @@ from ._governance import tag_values
 
 class ClassifiedStorageEncryptionDisabled(Rule):
     id = "G07"
-    title = "Classified storage encryption disabled"
+    name = "classified-data-unencrypted"
+    title = "Classified data lacks encryption at rest"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "Classified data on unencrypted storage has a greater exposure risk."
     how_to_fix = "Enable encryption for the storage resource before applying the change."

@@ -8,16 +8,25 @@ from argus.rules import Rule, RuleFinding
 
 
 _DATABASE_PORTS = (1433, 3306, 5432)
+_PUBLIC_CIDRS = ("0.0.0.0/0", "::/0")
 
 
-def _public_database_ports(ingress: dict[str, Any]) -> tuple[int, ...]:
-    cidrs = ingress.get("cidr_blocks")
-    if not isinstance(cidrs, (list, tuple)) or "0.0.0.0/0" not in cidrs:
+def _public_database_ports(ingress: dict[str, Any]) -> tuple[tuple[int, str], ...]:
+    cidrs: list[object] = []
+    for field in ("cidr_blocks", "ipv6_cidr_blocks"):
+        raw = ingress.get(field)
+        if isinstance(raw, (list, tuple)):
+            cidrs.extend(raw)
+        elif isinstance(raw, str):
+            cidrs.append(raw)
+    cidrs.extend((ingress.get("cidr_ipv4"), ingress.get("cidr_ipv6")))
+    public_cidrs = tuple(cidr for cidr in _PUBLIC_CIDRS if cidr in cidrs)
+    if not public_cidrs:
         return ()
 
-    protocol = ingress.get("protocol")
+    protocol = ingress.get("protocol", ingress.get("ip_protocol"))
     if protocol in ("-1", -1):
-        return _DATABASE_PORTS
+        return tuple((port, cidr) for port in _DATABASE_PORTS for cidr in public_cidrs)
     if protocol not in ("tcp", "6", 6):
         return ()
 
@@ -27,12 +36,15 @@ def _public_database_ports(ingress: dict[str, Any]) -> tuple[int, ...]:
         return ()
     if not isinstance(end, int) or isinstance(end, bool) or end < start:
         return ()
-    return tuple(port for port in _DATABASE_PORTS if start <= port <= end)
+    return tuple((port, cidr) for port in _DATABASE_PORTS if start <= port <= end
+                 for cidr in public_cidrs)
 
 
 class R004PublicDatabasePort(Rule):
     id = "R004"
-    title = "Database port open to the internet"
+    name = "data-port-exposed-to-internet"
+    title = "Data service port open to the public internet"
+    applies_to = ("terraform/aws",)
     severity = "high"
     controls = ()
     source_doc_ids = ()
@@ -45,19 +57,19 @@ class R004PublicDatabasePort(Rule):
         if after is None:
             return []
 
-        if change.canonical_type == "network_security_rule":
-            entries = [after] if after.get("type") == "ingress" else []
-        elif change.canonical_type == "network_security_group":
-            raw_entries = after.get("ingress")
-            entries = raw_entries if isinstance(raw_entries, list) else []
-        else:
+        if change.canonical_type != "network_ingress":
             return []
+        raw_entries = after.get("ingress")
+        if isinstance(raw_entries, list):
+            entries = raw_entries
+        else:
+            entries = [after] if after.get("type") in (None, "ingress") else []
 
-        ports: set[int] = set()
+        exposed: set[tuple[int, str]] = set()
         for entry in entries:
             if isinstance(entry, dict):
-                ports.update(_public_database_ports(entry))
+                exposed.update(_public_database_ports(entry))
         return [
-            self.finding(change, f"Ingress permits database port {port} from 0.0.0.0/0.")
-            for port in sorted(ports)
+            self.finding(change, f"Ingress permits database port {port} from {cidr}.")
+            for port, cidr in sorted(exposed)
         ]

@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class G17LogRetentionBelowMinimum(Rule):
     id = "G17"
-    title = "Log retention below the organization minimum"
+    name = "log-retention-below-minimum"
+    title = "Log retention below required minimum"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Short retention can remove logs before an investigation or audit needs them."
     how_to_fix = "Set retention_in_days to at least the organization's configured minimum, or 0 for indefinite retention."

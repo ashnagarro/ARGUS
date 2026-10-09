@@ -13,6 +13,7 @@ from urllib.parse import quote, urlsplit
 from .corpus import load_corpus
 from .report import _local_time
 from .rules import load_rules
+from .warden import W001_NAME, W001_TITLE
 
 
 _KEY_PATTERN = re.compile(r"(?i)sk-[A-Za-z0-9_-]*")
@@ -52,14 +53,39 @@ def _items(values: list[str]) -> str:
     return "<ul>" + "".join(f"<li>{value}</li>" for value in values) + "</ul>" if values else "<p>None recorded.</p>"
 
 
-def _findings(record: dict) -> str:
+def _findings(record: dict, rule_catalog: dict[str, object]) -> str:
     items: list[str] = []
     for finding in record.get("rule_findings", []):
         status = "WAIVED" if finding.get("waived") else "ENFORCED"
+        rule_id = str(finding.get("rule_id") or "")
+        rule = rule_catalog.get(rule_id)
+        legacy_title = W001_TITLE if rule_id == "W001" else getattr(rule, "title", "")
+        legacy_name = W001_NAME if rule_id == "W001" else getattr(rule, "name", "")
+        # Preserve metadata recorded at run time; installed rules fill legacy records.
+        title = str((finding.get("title") if finding.get("name") else "") or
+                    legacy_title or finding.get("title") or "Rule finding")
+        name = str(finding.get("name") or legacy_name or
+                   re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "rule")
+        resource = str(finding.get("resource") or "")
+        tool = str(finding.get("source_tool") or
+                   ("agent" if rule_id == "W001" else "terraform" if resource.startswith("aws_") else ""))
+        cloud = str(finding.get("cloud") or
+                    ("n/a" if rule_id == "W001" else "aws" if resource.startswith("aws_") else ""))
+        trigger = str(finding.get("message") or "")
+        headline = str(finding.get("headline") or "")
+        if headline and headline != title and headline != trigger:
+            trigger = f"{headline} — {trigger}" if trigger else headline
+        detail = [f"Resource: {resource}"]
+        if tool:
+            detail.append(f"Tool: {tool}")
+        if cloud:
+            detail.append(f"Cloud: {cloud}")
+        detail.append(f"Trigger: {trigger}")
+        rule_reference = f"({rule_id} · {name})"
         details = [
-            f'<strong>{_safe(finding.get("rule_id"))} [{status}]</strong> '
-            f'{_safe(finding.get("resource"))}: {_safe(finding.get("headline") or finding.get("title"))}',
-            f'<p>{_safe(finding.get("message"))}</p>',
+            f'<strong class="finding-title">{_safe(title)}</strong>',
+            '<p class="finding-detail">' + ' · '.join(_safe(part) for part in detail) + '</p>',
+            f'<small class="rule-ref">{_safe(rule_reference)}</small> [{status}]',
         ]
         for label, key in (("Why", "why_it_matters"), ("Fix", "how_to_fix")):
             if finding.get(key):
@@ -73,8 +99,9 @@ def _findings(record: dict) -> str:
     for finding in record.get("ai_findings", []):
         status = "VERIFIED" if finding.get("verified") else "UNVERIFIED"
         details = [
-            f'<strong>{_safe(finding.get("id"))} [AI {status}]</strong> '
-            f'{_safe(finding.get("resource"))}: {_safe(finding.get("claim"))}',
+            f'<strong class="finding-title">{_safe(finding.get("claim"))}</strong>',
+            f'<p class="finding-detail">Resource: {_safe(finding.get("resource"))}</p>',
+            f'<small class="rule-ref">({_safe(finding.get("id"))})</small> [AI {status}]',
             f'<p>Action: {_safe(finding.get("recommended_action"))}</p>',
         ]
         for evidence in finding.get("evidence", []):
@@ -180,7 +207,7 @@ def _runs(root: Path, *, include_archives: bool = False) -> list[dict]:
     return sorted(records, key=lambda item: str(item.get("run_at", "")), reverse=True)
 
 
-def _learned(root: Path) -> list[dict]:
+def _learned(root: Path, rule_catalog: dict[str, object]) -> list[dict]:
     compiled: dict[str, dict] = {}
     paths = [archive / "ledger.jsonl" for archive in reversed(_archives(root))]
     paths.append(root / "ledger" / "ledger.jsonl")
@@ -195,11 +222,10 @@ def _learned(root: Path) -> list[dict]:
             if (entry.get("type") in {"compile", "policy_compile"}
                     and entry.get("status") == "compiled" and entry.get("rule_id")):
                 compiled[entry["rule_id"]] = entry
-    installed = {rule.id: rule for rule in load_rules()}
     documents = load_corpus(root / "corpus") if (root / "corpus").is_dir() else {}
     results = []
     for rule_id, entry in sorted(compiled.items()):
-        rule = installed.get(rule_id)
+        rule = rule_catalog.get(rule_id)
         sources = []
         for doc_id in getattr(rule, "source_doc_ids", ()):
             doc = documents.get(doc_id)
@@ -208,6 +234,8 @@ def _learned(root: Path) -> list[dict]:
                             "url": doc.url if doc else ""})
         results.append({
             "rule_id": rule_id,
+            "title": getattr(rule, "title", "") or entry.get("title") or "Rule details unavailable",
+            "name": getattr(rule, "name", "") or entry.get("name") or rule_id.lower(),
             "source_finding": ("human policy" if entry.get("type") == "policy_compile"
                                else getattr(rule, "source_finding_id", "")
                                or (entry.get("finding_ids") or [""])[0]),
@@ -223,8 +251,9 @@ def _learned(root: Path) -> list[dict]:
 def write_console(root: Path, *, include_archives: bool = False) -> Path:
     """Render saved runs; never connect to a service or read credentials."""
     root = Path(root)
+    rule_catalog = {rule.id: rule for rule in load_rules(include_governance=True)}
     runs = _runs(root, include_archives=include_archives)
-    learned = _learned(root)
+    learned = _learned(root, rule_catalog)
     archives = _archives(root)
     settings_path = root / "argus.toml"
     settings = tomllib.loads(settings_path.read_text(encoding="utf-8")) if settings_path.is_file() else {}
@@ -263,7 +292,7 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
             f'<td>{replay_calls}</td>'
             f'<td>{float(record.get("elapsed_seconds", 0)):.2f}</td></tr>'
             f'<tr id="{target}" class="detail-row" hidden><td colspan="6">'
-            '<h3>Findings</h3>' + _findings(record)
+            '<h3>Findings</h3>' + _findings(record, rule_catalog)
             + '<h3>Conditions</h3>' + _conditions(record)
             + '<h3>Agentic-loop timeline</h3>' + _timeline(root, record)
             + '</td></tr>'
@@ -277,20 +306,23 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
             for doc in item["sources"]
         ) or ("Human-supplied policy (no corpus citation)" if item["policy"]
               else "No source document recorded")
+        rule_reference = f'({item["rule_id"]} · {item["name"]})'
+        rule_cell = (f'<strong>{_safe(item["title"])}</strong><br>'
+                     f'<small class="rule-ref">{_safe(rule_reference)}</small>')
         library.append(
-            f'<tr><td>{_safe(item["rule_id"])}</td><td>{_safe(item["source_finding"])}</td>'
+            f'<tr><td>{rule_cell}</td><td>{_safe(item["source_finding"])}</td>'
             f'<td>{sources}</td><td>{"ENFORCED" if item["enforced"] else "not installed"}</td>'
             f'<td>{_safe(item["test_status"])}</td></tr>'
         )
         if item["rule_id"] == "R007" and baseline:
             savings.append(
-                f'<tr><td>{_safe(item["rule_id"])}</td>'
+                f'<tr><td>{rule_cell}</td>'
                 f'<td>{_safe(baseline.get("ai_calls", 0))} calls / '
                 f'{float(baseline.get("elapsed_seconds", 0)):.2f} s</td>'
                 '<td>0 calls / 0.00 s</td></tr>'
             )
         else:
-            savings.append(f'<tr><td>{_safe(item["rule_id"])}</td>'
+            savings.append(f'<tr><td>{rule_cell}</td>'
                            '<td>Not measured</td><td>Not measured</td></tr>')
 
     works_now = ["local plan checks", "cited Scholar findings", "enforced rules",
@@ -323,6 +355,7 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
         '.needs-human{background:#70479a}.detail-row td{background:#f9fbfd}'
         '.timeline{border-left:4px solid #2c678a;padding-left:1.5rem}.timeline li{margin:.7rem 0}'
         '.timeline span{font-weight:800}blockquote{border-left:4px solid #9a5a00;padding-left:1rem}'
+        '.finding-detail{margin:.25rem 0;color:#34485e}.rule-ref{font-size:.75em;color:#526677}'
         'footer{border-top:2px solid #ccd7df;margin-top:2rem;padding-top:1rem}'
         '</style></head><body><header><h1>ARGUS Console</h1>'
         '<p>Evidence-backed safety gate for Terraform and agent-written infrastructure changes.</p></header>'

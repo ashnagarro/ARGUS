@@ -19,7 +19,9 @@ def _has_wildcard(value: object) -> bool:
 
 class PublicS3BucketPolicy(Rule):
     id = "G03"
-    title = "S3 bucket policy grants public access"
+    name = "object-storage-policy-allows-public-access"
+    title = "Storage policy allows public access"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "An Allow statement for every principal can expose bucket data publicly."
     how_to_fix = "Replace the wildcard Principal with the specific identities that need access."

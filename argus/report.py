@@ -45,7 +45,26 @@ def _markdown_text(value: str) -> str:
 
 def _rule_summary(report: Report) -> str:
     ids = sorted({finding.rule_id for finding in report.rule_findings})
-    return f"{len(ids)} ({', '.join(ids)})" if ids else "0"
+    return str(len(ids))
+
+
+def finding_detail(finding: RuleFinding) -> str:
+    """Keep the concrete source and trigger separate from the generic rule title."""
+    parts = [f"Resource: {finding.resource}"]
+    if finding.source_tool:
+        parts.append(f"Tool: {finding.source_tool}")
+    if finding.cloud:
+        parts.append(f"Cloud: {finding.cloud}")
+    trigger = finding.message
+    if finding.headline and finding.headline not in (finding.title, trigger):
+        trigger = f"{finding.headline} — {trigger}" if trigger else finding.headline
+    parts.append(f"Trigger: {trigger}")
+    return " · ".join(parts)
+
+
+def finding_label(finding: RuleFinding) -> str:
+    name = finding.name or re.sub(r"[^a-z0-9]+", "-", finding.title.lower()).strip("-")
+    return f"({finding.rule_id} · {name or 'rule'})"
 
 
 def _ai_calls_text(report: Report) -> str:
@@ -141,12 +160,9 @@ def render_terminal(report: Report) -> str:
     lines.extend(["", "RULE"])
     if report.rule_findings:
         for finding in report.rule_findings:
-            lines.append(
-                f"- {finding.rule_id} [{_rule_status(finding)}] {finding.resource}: "
-                f"{_single_line(finding.title)} - {_single_line(finding.message)}"
-            )
-            if finding.headline:
-                lines.append(f"  Headline: {_single_line(finding.headline)}")
+            lines.append(f"- {_single_line(finding.title)}")
+            lines.append(f"  {_single_line(finding_detail(finding))}")
+            lines.append(f"  {finding_label(finding)} [{_single_line(_rule_status(finding))}]")
             if _tags_text(finding.tags):
                 lines.append(f"  Tags: {_single_line(_tags_text(finding.tags))}")
             if finding.why_it_matters:
@@ -161,10 +177,9 @@ def render_terminal(report: Report) -> str:
     lines.extend(["", "AI VERIFIED"])
     if verified:
         for finding in verified:
-            lines.append(
-                f"- {finding.id} [{finding.severity}] {finding.resource}: "
-                f"{_single_line(finding.claim)}"
-            )
+            lines.append(f"- {_single_line(finding.claim)}")
+            lines.append(f"  Resource: {_single_line(finding.resource)}")
+            lines.append(f"  ({finding.id}) [{_single_line(finding.severity)}]")
             lines.append(f"  Action: {_single_line(finding.recommended_action)}")
             if _tags_text(finding.tags):
                 lines.append(f"  Tags: {_single_line(_tags_text(finding.tags))}")
@@ -177,10 +192,9 @@ def render_terminal(report: Report) -> str:
     lines.extend(["", "AI UNVERIFIED"])
     if unverified:
         for finding in unverified:
-            lines.append(
-                f"- {finding.id} [{finding.severity}] {finding.resource}: "
-                f"{_single_line(finding.claim)}"
-            )
+            lines.append(f"- {_single_line(finding.claim)}")
+            lines.append(f"  Resource: {_single_line(finding.resource)}")
+            lines.append(f"  ({finding.id}) [{_single_line(finding.severity)}]")
             lines.append(
                 f"  Reason: {_single_line(finding.verification_reason or 'evidence could not be verified')}"
             )
@@ -229,13 +243,14 @@ def render_markdown(report: Report) -> str:
     lines.extend(["", "## RULE", ""])
     if report.rule_findings:
         for finding in report.rule_findings:
+            lines.append(f"- **{_markdown_text(finding.title)}**")
+            lines.append(f"  - {_markdown_text(finding_detail(finding))}")
             lines.append(
-                f"- **{finding.rule_id} [{_markdown_text(_rule_status(finding))}]** "
-                f"{_markdown_text(finding.resource)}: {_markdown_text(finding.title)} — "
-                f"{_markdown_text(finding.message)}"
+                f"  - <small>{_markdown_text(finding_label(finding))}</small> "
+                f"[{_markdown_text(_rule_status(finding))}]"
             )
             for label, value in (
-                ("Headline", finding.headline), ("Tags", _tags_text(finding.tags)),
+                ("Tags", _tags_text(finding.tags)),
                 ("Why", finding.why_it_matters), ("Fix", finding.how_to_fix),
             ):
                 if value:
@@ -248,10 +263,9 @@ def render_markdown(report: Report) -> str:
     lines.extend(["", "## AI VERIFIED", ""])
     if verified:
         for finding in verified:
-            lines.append(
-                f"- **{finding.id} [{finding.severity}]** "
-                f"{_markdown_text(finding.resource)}: {_markdown_text(finding.claim)}"
-            )
+            lines.append(f"- **{_markdown_text(finding.claim)}**")
+            lines.append(f"  - Resource: {_markdown_text(finding.resource)}")
+            lines.append(f"  - <small>({_markdown_text(finding.id)})</small> [{_markdown_text(finding.severity)}]")
             lines.append(f"  - Action: {_markdown_text(finding.recommended_action)}")
             if _tags_text(finding.tags):
                 lines.append(f"  - Tags: {_markdown_text(_tags_text(finding.tags))}")
@@ -264,10 +278,9 @@ def render_markdown(report: Report) -> str:
     lines.extend(["", "## AI UNVERIFIED", ""])
     if unverified:
         for finding in unverified:
-            lines.append(
-                f"- **{finding.id} [{finding.severity}]** "
-                f"{_markdown_text(finding.resource)}: {_markdown_text(finding.claim)}"
-            )
+            lines.append(f"- **{_markdown_text(finding.claim)}**")
+            lines.append(f"  - Resource: {_markdown_text(finding.resource)}")
+            lines.append(f"  - <small>({_markdown_text(finding.id)})</small> [{_markdown_text(finding.severity)}]")
             lines.append(
                 f"  - Reason: {_markdown_text(finding.verification_reason or 'evidence could not be verified')}"
             )
@@ -331,12 +344,13 @@ def render_html(report: Report) -> str:
     rules = []
     for finding in report.rule_findings:
         details = [
-            f"<strong>{_html_text(finding.rule_id)}</strong> "
-            f"[{_html_text(_rule_status(finding))}] {_html_text(finding.resource)}: "
-            f"{_html_text(finding.title)} — {_html_text(finding.message)}"
+            f'<strong class="finding-title">{_html_text(finding.title)}</strong>'
+            f'<p class="finding-detail">{_html_text(finding_detail(finding))}</p>'
+            f'<small class="rule-ref">{_html_text(finding_label(finding))}</small> '
+            f'[{_html_text(_rule_status(finding))}]'
         ]
         for label, value in (
-            ("Headline", finding.headline), ("Tags", _tags_text(finding.tags)),
+            ("Tags", _tags_text(finding.tags)),
             ("Why", finding.why_it_matters), ("Fix", finding.how_to_fix),
         ):
             if value:
@@ -345,14 +359,15 @@ def render_html(report: Report) -> str:
             details.append(f"<p class=\"enforced\">{_html_text(_learned_status(finding))}</p>")
         rules.append("<li>" + "".join(details) + "</li>")
     verified_items = [
-        "<li><strong>"
-        + _html_text(finding.id)
-        + "</strong> ["
-        + _html_text(finding.severity)
-        + "] "
-        + _html_text(finding.resource)
-        + ": "
+        '<li><strong class="finding-title">'
         + _html_text(finding.claim)
+        + '</strong><p class="finding-detail">Resource: '
+        + _html_text(finding.resource)
+        + '</p><small class="rule-ref">('
+        + _html_text(finding.id)
+        + ')</small> ['
+        + _html_text(finding.severity)
+        + ']'
         + "<p>Action: "
         + _html_text(finding.recommended_action)
         + "</p>"
@@ -365,14 +380,15 @@ def render_html(report: Report) -> str:
         for finding in verified
     ]
     unverified_items = [
-        "<li><strong>"
-        + _html_text(finding.id)
-        + "</strong> ["
-        + _html_text(finding.severity)
-        + "] "
-        + _html_text(finding.resource)
-        + ": "
+        '<li><strong class="finding-title">'
         + _html_text(finding.claim)
+        + '</strong><p class="finding-detail">Resource: '
+        + _html_text(finding.resource)
+        + '</p><small class="rule-ref">('
+        + _html_text(finding.id)
+        + ')</small> ['
+        + _html_text(finding.severity)
+        + ']'
         + "<p>Reason: "
         + _html_text(finding.verification_reason or "evidence could not be verified")
         + "</p>"
@@ -410,6 +426,7 @@ def render_html(report: Report) -> str:
         "h1,h2{line-height:1.2}section{border-top:1px solid #d8e0e8;margin-top:1.5rem;padding-top:.5rem}"
         "li{margin:.5rem 0}ul.evidence{font-size:.9rem;color:#34485e}"
         "q{overflow-wrap:anywhere}span{display:block}strong{font-weight:700}"
+        ".finding-detail{margin:.25rem 0;color:#34485e}.rule-ref{font-size:.75em;color:#526677}"
         ".banner{font-size:3rem;font-weight:800;padding:1.2rem;border-radius:.7rem;color:white;margin:1.2rem 0}"
         ".no-go{background:#a11825}.conditions{background:#9a5a00}.go{background:#176833}"
         ".needs-human{background:#70479a}.enforced{font-weight:800;color:#a11825}"

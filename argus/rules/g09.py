@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class IAMAccessKeyCreated(Rule):
     id = "G09"
-    title = "IAM access key created"
+    name = "long-lived-access-key-created"
+    title = "Long-lived access key created"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "A long-lived access key can be copied and used outside its intended workload."
     how_to_fix = "Use a role with temporary credentials where possible; otherwise manage and rotate the key securely."

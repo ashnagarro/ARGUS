@@ -18,9 +18,13 @@ def rule_finding(severity: str = "critical") -> RuleFinding:
     return RuleFinding(
         rule_id="R001",
         resource="aws_db_instance.synthetic",
-        title="Stateful resource replacement",
+        name="data-store-replacement",
+        title="Data store will be destroyed and recreated",
         severity=severity,
         message="identifier causes replacement",
+        headline="Production data store will be deleted and recreated",
+        source_tool="terraform",
+        cloud="aws",
     )
 
 
@@ -79,6 +83,14 @@ def test_reports_group_findings_and_escape_html() -> None:
     assert "Review UNVERIFIED finding" in markdown
     assert "&lt;unsafe&gt;" in html
     assert "<unsafe>" not in html
+    title = "Data store will be destroyed and recreated"
+    label = "(R001 · data-store-replacement)"
+    for rendered in (render_terminal(report), markdown, html):
+        assert (rendered.index(title) < rendered.index("Resource:") <
+                rendered.index("Tool: terraform") < rendered.index("Cloud: aws") <
+                rendered.index("Trigger:") < rendered.index(label))
+    assert "<small>(R001 · data-store-replacement)</small>" in markdown
+    assert '<small class="rule-ref">(R001 · data-store-replacement)</small>' in html
 
 
 def test_offline_replay_reports_original_live_run_instead_of_bare_zero() -> None:

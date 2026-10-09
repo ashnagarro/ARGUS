@@ -13,7 +13,7 @@ def _database_change(
     return Change(
         address="aws_db_instance.synthetic",
         resource_type="aws_db_instance",
-        canonical_type="database_instance",
+        canonical_type="data_store",
         actions=actions,
         before=before,
         after=after,

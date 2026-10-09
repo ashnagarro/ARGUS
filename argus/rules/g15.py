@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class G15GuardDutyDisabled(Rule):
     id = "G15"
-    title = "GuardDuty monitoring disabled"
+    name = "threat-monitoring-disabled"
+    title = "Threat monitoring disabled"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Disabling GuardDuty stops threat detection for the affected region."
     how_to_fix = "Keep the aws_guardduty_detector resource and set enable = true."

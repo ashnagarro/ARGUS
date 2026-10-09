@@ -23,8 +23,8 @@ def _change(resource_type: str, canonical_type: str, before: dict, after: dict) 
 @pytest.mark.parametrize(
     ("resource_type", "canonical_type", "field"),
     [
-        ("aws_db_instance", "database_instance", "storage_encrypted"),
-        ("aws_ebs_volume", "block_volume", "encrypted"),
+        ("aws_db_instance", "data_store", "storage_encrypted"),
+        ("aws_ebs_volume", "data_store", "encrypted"),
     ],
 )
 def test_encryption_disabled_triggers(resource_type: str, canonical_type: str, field: str) -> None:
@@ -42,9 +42,16 @@ def test_encryption_disabled_triggers(resource_type: str, canonical_type: str, f
 def test_encryption_remaining_enabled_does_not_trigger() -> None:
     change = _change(
         "aws_db_instance",
-        "database_instance",
+        "data_store",
         {"storage_encrypted": True},
         {"storage_encrypted": True},
     )
+
+    assert StorageEncryptionDisabled().check(change, [change]) == []
+
+
+def test_unrelated_resource_with_encryption_field_does_not_trigger() -> None:
+    change = _change("synthetic_other", "compute_instance",
+                     {"encrypted": True}, {"encrypted": False})
 
     assert StorageEncryptionDisabled().check(change, [change]) == []

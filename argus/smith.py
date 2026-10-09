@@ -29,6 +29,11 @@ Approve = Callable[[str], bool]
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 _RULE_NAME = re.compile(r"r(\d{3,})\.py$")
 _RUN_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+_READABLE_NAME = re.compile(r"^[a-z]+(?:-[a-z0-9]+)*$")
+_SOURCE_SPECIFIC_TERMS = re.compile(
+    r"\b(?:terraform|cloudformation|bicep|aws|azure|rds|sql[- ]server|iam|kms|ebs|s3)\b",
+    re.IGNORECASE,
+)
 _IGNORED_DIRS = frozenset({
     ".git", ".venv", ".cache", ".codex-home", ".pytest_cache",
     "__pycache__", "backup", "traces",
@@ -150,6 +155,10 @@ def _prompt(finding: AIFinding, rule_id: str, attempt: int, failures: str,
         "Do not edit any other file, including corpus, configuration or existing rules. "
         "Use the normalized Change fields, never raw Terraform plan JSON. "
         "Subclass argus.rules.Rule and give it the assigned rule ID. "
+        "Declare name as a unique kebab-case generic risk concept, title as a plain-English "
+        "generic risk statement, and applies_to = (\"terraform/aws\",). "
+        "Keep tool, cloud, service, and resource-specific terms out of name and title; "
+        "put those details in the finding message and remediation instead. "
         "The rule module docstring must cite every evidence doc_id and retrieved_at date. "
         f"The Rule subclass must declare source_finding_id = {finding.id!r} and "
         f"human_approved_on = {approved_on!r}. "
@@ -184,13 +193,33 @@ def _validate_generated(root: Path, rule_id: str, finding: AIFinding,
         if item["doc_id"] not in docstring or item["retrieved_at"] not in docstring:
             return "Rule docstring does not cite its verified document and retrieval date."
     classes = [node for node in module.body if isinstance(node, ast.ClassDef)]
-    metadata: dict[str, str] = {}
+    metadata: dict[str, Any] = {}
     for rule_class in classes:
         for statement in rule_class.body:
-            if isinstance(statement, ast.Assign) and isinstance(statement.value, ast.Constant):
+            if isinstance(statement, ast.Assign):
+                try:
+                    value = ast.literal_eval(statement.value)
+                except (ValueError, TypeError, RecursionError):
+                    continue
                 for target in statement.targets:
-                    if isinstance(target, ast.Name) and isinstance(statement.value.value, str):
-                        metadata[target.id] = statement.value.value
+                    if isinstance(target, ast.Name):
+                        metadata[target.id] = value
+    name = metadata.get("name")
+    title = metadata.get("title")
+    applies_to = metadata.get("applies_to")
+    if metadata.get("id") != rule_id:
+        return "Rule must declare its assigned, stable audit ID."
+    if (not isinstance(name, str) or not _READABLE_NAME.fullmatch(name)
+            or _SOURCE_SPECIFIC_TERMS.search(name)):
+        return "Rule name must be a generic kebab-case risk concept."
+    if (not isinstance(title, str) or not title.strip()
+            or _SOURCE_SPECIFIC_TERMS.search(title)):
+        return "Rule title must be a plain-English generic risk statement."
+    if (not isinstance(applies_to, (list, tuple)) or not applies_to
+            or any(not isinstance(item, str) or not re.fullmatch(r"[a-z]+/[a-z]+", item)
+                   for item in applies_to)
+            or "terraform/aws" not in applies_to):
+        return "Rule applies_to must list the implemented terraform/aws combination."
     if (metadata.get("source_finding_id") != finding.id
             or metadata.get("human_approved_on") != approved_on
             or not metadata.get("why_it_matters") or not metadata.get("how_to_fix")):

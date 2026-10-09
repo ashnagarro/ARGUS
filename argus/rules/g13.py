@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class CloudTrailLoggingOff(Rule):
     id = "G13"
-    title = "CloudTrail logging disabled"
+    name = "audit-logging-disabled"
+    title = "Audit logging disabled"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Without CloudTrail logging, activity on affected resources may lack an audit trail."
     how_to_fix = "Keep the trail and set enable_logging = true."

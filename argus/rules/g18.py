@@ -10,7 +10,9 @@ from ._governance import is_production
 
 class G18ProductionMultiAzDisabled(Rule):
     id = "G18"
-    title = "Production database Multi-AZ disabled"
+    name = "data-store-redundancy-disabled"
+    title = "Production data store redundancy disabled"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Removing Multi-AZ from a production database reduces its failure resilience."
     how_to_fix = "Keep multi_az = true on the production aws_db_instance."

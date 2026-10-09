@@ -29,7 +29,9 @@ def _assume_role(value: object) -> bool:
 
 class WildcardAWSTrustPrincipal(Rule):
     id = "G11"
-    title = "IAM role trusts every AWS principal"
+    name = "role-trust-allows-any-principal"
+    title = "Role trust allows any principal"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "A wildcard AWS principal can make a role assumable by identities beyond the intended trust boundary."
     how_to_fix = "List the intended AWS principals explicitly and restrict role assumption with conditions."

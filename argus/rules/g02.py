@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class S3PublicAccessBlockDisabled(Rule):
     id = "G02"
-    title = "S3 public access block disabled"
+    name = "object-storage-public-access-controls-disabled"
+    title = "Public access controls disabled on object storage"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Disabled S3 public access controls can allow bucket or object exposure."
     how_to_fix = "Set all four S3 public access block settings to true."

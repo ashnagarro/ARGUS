@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class UnencryptedEBSVolume(Rule):
     id = "G05"
-    title = "EBS volume encryption disabled"
+    name = "block-storage-unencrypted"
+    title = "Block storage encryption disabled"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "An unencrypted EBS volume can store data without encryption at rest."
     how_to_fix = "Set encrypted = true on the EBS volume."

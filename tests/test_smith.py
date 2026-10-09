@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import json
@@ -65,6 +66,10 @@ def write_generated(project: Path) -> None:
     (project / "argus/rules/r007.py").write_text(
         '"""R007: synthetic, retrieved_at 2026-10-09."""\n'
         'class GeneratedRule:\n'
+        '    id = "R007"\n'
+        '    name = "engine-config-incompatible-with-upgrade"\n'
+        '    title = "Engine configuration incompatible with upgrade"\n'
+        '    applies_to = ("terraform/aws",)\n'
         '    source_finding_id = "AI-01"\n'
         f'    human_approved_on = "{approved_on}"\n'
         '    why_it_matters = "Synthetic reason."\n'
@@ -106,6 +111,9 @@ def test_compiles_with_approval_high_reasoning_and_zero_ai_calls(project: Path) 
     assert result.rule_id == "R007"
     assert result.attempts == 1
     assert result.after_ai_calls == 0
+    generated = (project / "argus/rules/r007.py").read_text(encoding="utf-8")
+    assert 'name = "engine-config-incompatible-with-upgrade"' in generated
+    assert 'applies_to = ("terraform/aws",)' in generated
     assert len(approvals) == 1
     assert commands[0][:4] == ["custom-codex", "exec", "-c", 'model_reasoning_effort="high"']
     assert commands[0][4:8] == ["-s", "workspace-write", "-C", str(project)]
@@ -274,3 +282,25 @@ def test_unverified_finding_is_never_sent_to_codex(project: Path) -> None:
     assert result.status == "needs human"
     assert result.attempts == 0
     assert "VERIFIED" in (result.reason or "")
+
+
+def test_generated_rule_requires_generic_metadata_and_stable_id(project: Path) -> None:
+    write_generated(project)
+    approved_on = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
+    verified = replace(finding(), evidence=({"doc_id": "synthetic", "quote": QUOTE,
+                                           "retrieved_at": "2026-10-09"},))
+    assert smith._validate_generated(project, "R007", verified, approved_on) is None
+
+    path = project / "argus/rules/r007.py"
+    valid = path.read_text(encoding="utf-8")
+    for broken, expected in (
+        (valid.replace('id = "R007"', 'id = "R008"'), "stable audit ID"),
+        (valid.replace('name = "engine-config-incompatible-with-upgrade"',
+                       'name = "aws-rds-upgrade"'), "generic kebab-case"),
+        (valid.replace('title = "Engine configuration incompatible with upgrade"',
+                       'title = "AWS RDS parameter group incompatible"'), "generic risk"),
+        (valid.replace('applies_to = ("terraform/aws",)', 'applies_to = ()'), "applies_to"),
+    ):
+        path.write_text(broken, encoding="utf-8")
+        assert expected in (smith._validate_generated(project, "R007", verified, approved_on) or "")
+    path.write_text(valid, encoding="utf-8")

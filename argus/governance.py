@@ -70,9 +70,12 @@ def load_controls(path: Path) -> dict[str, tuple[str, ...]]:
 
 def context_finding(rule: Any, resource: str, message: str, *, severity: str | None = None) -> RuleFinding:
     """Create a finding for run or file checks that have no Terraform Change."""
+    source_tool, cloud = rule.applies_to[0].split("/", 1)
     return RuleFinding(
         rule_id=rule.id, resource=resource, title=rule.title,
         severity=severity or rule.severity, message=message,
         controls=rule.controls, headline=rule.title,
         why_it_matters=rule.why_it_matters, how_to_fix=rule.how_to_fix,
+        name=rule.name, applies_to=rule.applies_to,
+        source_tool=source_tool, cloud=cloud,
     )

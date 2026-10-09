@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class PublicDatabaseAccess(Rule):
     id = "G01"
-    title = "Database is publicly accessible"
+    name = "data-store-publicly-accessible"
+    title = "Data store is publicly accessible"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "A public database endpoint can be reached from outside the private network."
     how_to_fix = "Set publicly_accessible = false and use private network access."

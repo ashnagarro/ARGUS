@@ -35,7 +35,7 @@ def test_flags_inline_security_group_ingress() -> None:
     group = replace(
         change,
         resource_type="aws_security_group",
-        canonical_type="network_security_group",
+        canonical_type="network_ingress",
         after={"ingress": [change.after]},
     )
 
@@ -49,3 +49,18 @@ def test_does_not_flag_public_egress() -> None:
     egress = replace(change, after={**change.after, "type": "egress"})
 
     assert R004PublicDatabasePort().check(egress, [egress]) == []
+
+
+def test_flags_modern_ingress_rule_with_public_ipv6_cidr() -> None:
+    change = parse_plan(_PLAN)[0]
+    ingress = replace(
+        change,
+        resource_type="aws_vpc_security_group_ingress_rule",
+        after={"cidr_ipv6": "::/0", "ip_protocol": "tcp",
+               "from_port": 5432, "to_port": 5432},
+    )
+
+    findings = R004PublicDatabasePort().check(ingress, [ingress])
+
+    assert len(findings) == 1
+    assert "5432 from ::/0" in findings[0].message

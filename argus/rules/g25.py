@@ -12,7 +12,9 @@ from ._governance import ContextRule
 
 class SeparationOfDuties(ContextRule):
     id = "G25"
-    title = "Author is also approver"
+    name = "self-approved-change"
+    title = "Change approved by its author"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "Self-approval removes independent review of a change."
     how_to_fix = "Use a different human approver for this change."

@@ -18,7 +18,9 @@ def _major_version(version: object) -> int | None:
 
 class SqlServerMajorUpgradeParameterGroup(Rule):
     id = "R007"
-    title = "SQL Server major upgrade retains parameter group"
+    name = "engine-config-incompatible-with-upgrade"
+    title = "Engine configuration not compatible with the target major version"
+    applies_to = ("terraform/aws",)
     severity = "high"
     source_doc_ids = ("rds-sqlserver-upgrade-considerations",)
     why_it_matters = "A major SQL Server upgrade using the old custom parameter group can apply incompatible settings."
@@ -29,7 +31,7 @@ class SqlServerMajorUpgradeParameterGroup(Rule):
 
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         if (change.resource_type != "aws_db_instance"
-                or change.canonical_type != "database_instance"
+                or change.canonical_type != "data_store"
                 or change.actions != ("update",)):
             return []
         before = change.before or {}

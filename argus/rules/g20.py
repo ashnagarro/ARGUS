@@ -23,7 +23,9 @@ def _rule_names(state: dict[str, Any] | None) -> set[str]:
 
 class G20BackupPlanRuleDeleted(Rule):
     id = "G20"
-    title = "Backup plan rule deleted"
+    name = "backup-schedule-removed"
+    title = "Backup schedule removed"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Removing a backup plan rule can stop scheduled recovery points."
     how_to_fix = "Keep the named rule block in aws_backup_plan, or replace it with an approved backup schedule."

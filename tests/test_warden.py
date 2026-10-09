@@ -79,7 +79,10 @@ def test_agent_check_logs_permission_and_scope_in_test_workspace(
         plan, tmp_path / "reports", author="agent:smith",
         changed_files=("infra/main.tf",),
     ) == 1
-    assert "W001 [critical]" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert (output.index("Agent changed files outside its permitted scope")
+            < output.index("Resource: infra/main.tf")
+            < output.index("(W001 · agent-out-of-scope-change) [critical]"))
 
 
 def test_sensitive_resource_needs_approval_even_for_allowed_agent_file(

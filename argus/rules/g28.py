@@ -12,7 +12,9 @@ from ._governance import ContextRule
 
 class SensitiveAgentApproval(ContextRule):
     id = "G28"
-    title = "Sensitive agent change needs human approval"
+    name = "agent-sensitive-change-needs-approval"
+    title = "Agent changed a sensitive resource: human approval required"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "IAM, security-group, and KMS changes can alter access to infrastructure."
     how_to_fix = "Obtain review from a distinct human and provide --approver."

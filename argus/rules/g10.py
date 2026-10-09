@@ -12,7 +12,9 @@ def _administrator_access(value: object) -> bool:
 
 class AdministratorAccessOnUser(Rule):
     id = "G10"
-    title = "AdministratorAccess attached to an IAM user"
+    name = "administrator-access-granted-to-user"
+    title = "Administrator access granted to a user"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "A user with AdministratorAccess can change almost any resource in the account."
     how_to_fix = "Use a narrowly scoped role with temporary credentials instead of direct user access."

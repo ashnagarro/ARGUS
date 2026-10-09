@@ -8,7 +8,9 @@ from argus.rules import Rule, RuleFinding
 
 class R003SkipFinalSnapshot(Rule):
     id = "R003"
-    title = "Database final snapshot skipped"
+    name = "delete-without-final-backup"
+    title = "Data store could be deleted without a final backup"
+    applies_to = ("terraform/aws",)
     severity = "high"
     controls = ()
     source_doc_ids = ()
@@ -17,7 +19,7 @@ class R003SkipFinalSnapshot(Rule):
 
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         """Flag a database configured to skip its final snapshot."""
-        if change.canonical_type not in {"database_instance", "database_cluster"}:
+        if change.canonical_type != "data_store":
             return []
 
         after_skips = change.after is not None and change.after.get("skip_final_snapshot") is True

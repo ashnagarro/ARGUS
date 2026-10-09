@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class FlowLogDeleted(Rule):
     id = "G14"
-    title = "VPC flow log deleted"
+    name = "network-flow-logging-removed"
+    title = "Network flow logging removed"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Deleting a flow log removes network traffic records used for investigation."
     how_to_fix = "Keep the flow log or create an equivalent replacement before removing it."

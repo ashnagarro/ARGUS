@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class S3EncryptionConfigurationDeleted(Rule):
     id = "G04"
-    title = "S3 encryption configuration deleted"
+    name = "storage-encryption-policy-removed"
+    title = "Storage encryption policy removed"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Removing bucket encryption configuration can leave new objects without the expected encryption policy."
     how_to_fix = "Keep the bucket server-side encryption configuration or replace it in the same change."

@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class StorageEncryptionDisabled(Rule):
     id = "R005"
-    title = "Storage encryption disabled"
+    name = "encryption-at-rest-disabled"
+    title = "Encryption at rest disabled"
+    applies_to = ("terraform/aws",)
     severity = "high"
     controls = ()
     source_doc_ids = ()
@@ -18,6 +20,8 @@ class StorageEncryptionDisabled(Rule):
     _encryption_fields = ("storage_encrypted", "encrypted")
 
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
+        if change.canonical_type not in {"data_store", "encryption_config"}:
+            return []
         before = change.before or {}
         after = change.after or {}
         for field in self._encryption_fields:

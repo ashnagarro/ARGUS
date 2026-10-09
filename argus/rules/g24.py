@@ -12,7 +12,9 @@ from ._governance import ContextRule, is_production
 
 class ProductionTicket(ContextRule):
     id = "G24"
+    name = "production-change-without-ticket"
     title = "Production change has no ticket"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "A production change without a ticket lacks a review reference."
     how_to_fix = "Provide the production change ticket with --ticket."

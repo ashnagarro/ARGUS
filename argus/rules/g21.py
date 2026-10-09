@@ -12,7 +12,9 @@ from ._governance import ContextRule
 
 class RequiredTags(ContextRule):
     id = "G21"
-    title = "Required tags missing"
+    name = "required-metadata-missing"
+    title = "Required resource metadata missing"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Missing ownership or classification tags prevent consistent review."
     how_to_fix = "Add every tag required by the organization's governance configuration."

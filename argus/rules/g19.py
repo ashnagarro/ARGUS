@@ -27,7 +27,9 @@ def _suspended(resource_type: str, state: dict[str, Any] | None) -> bool:
 
 class G19S3VersioningSuspended(Rule):
     id = "G19"
-    title = "S3 bucket versioning suspended"
+    name = "object-versioning-suspended"
+    title = "Object versioning suspended"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Suspended versioning stops creating new object versions for recovery."
     how_to_fix = "Set versioning_configuration.status = \"Enabled\" for the S3 bucket."

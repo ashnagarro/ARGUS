@@ -12,7 +12,9 @@ from ._governance import ContextRule
 
 class AllowedInstanceClass(ContextRule):
     id = "G23"
-    title = "Instance class not allowed"
+    name = "unapproved-instance-class"
+    title = "Unapproved compute class selected"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Unapproved instance classes bypass the team's sizing policy."
     how_to_fix = "Choose an instance class in the organization's allowed list."

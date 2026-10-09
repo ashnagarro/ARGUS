@@ -8,7 +8,9 @@ from argus.rules import Rule
 
 class KMSKeyProtection(Rule):
     id = "G06"
-    title = "KMS key protection reduced"
+    name = "encryption-key-protection-reduced"
+    title = "Encryption key protection reduced"
+    applies_to = ("terraform/aws",)
     severity = "critical"
     why_it_matters = "Deleting a KMS key or disabling its rotation weakens protection of encrypted data."
     how_to_fix = "Retain the KMS key and set enable_key_rotation = true."

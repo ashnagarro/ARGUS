@@ -10,7 +10,7 @@ def protected_database() -> Change:
     return Change(
         address="aws_db_instance.synthetic",
         resource_type="aws_db_instance",
-        canonical_type="database_instance",
+        canonical_type="data_store",
         actions=("update",),
         before={"deletion_protection": True},
         after={"deletion_protection": False},
@@ -32,5 +32,11 @@ def test_deletion_protection_off_triggers() -> None:
 
 def test_deletion_protection_stays_on_does_not_trigger() -> None:
     change = replace(protected_database(), after={"deletion_protection": True})
+
+    assert DeletionProtectionDisabled().check(change, [change]) == []
+
+
+def test_unrelated_resource_with_same_attribute_does_not_trigger() -> None:
+    change = replace(protected_database(), canonical_type="compute_instance")
 
     assert DeletionProtectionDisabled().check(change, [change]) == []

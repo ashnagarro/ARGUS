@@ -39,6 +39,10 @@ class RuleFinding:
     waived: bool = False
     waiver_reason: str | None = None
     waiver_expires: str | None = None
+    name: str = ""
+    applies_to: tuple[str, ...] = ()
+    source_tool: str = ""
+    cloud: str = ""
 
 @dataclass(frozen=True, slots=True)
 class AIFinding:

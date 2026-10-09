@@ -11,6 +11,12 @@ from typing import Sequence
 from .models import RuleFinding
 
 
+W001_ID = "W001"
+W001_NAME = "agent-out-of-scope-change"
+W001_TITLE = "Agent changed files outside its permitted scope"
+W001_APPLIES_TO = ("agent/files",)
+
+
 def load_agents(path: Path) -> dict[str, tuple[str, ...]]:
     """Read the small agents.yaml allowlist without a YAML dependency."""
     agents: dict[str, list[str]] = {}
@@ -60,12 +66,14 @@ def check_agent_files(
         file = _relative_file(value)
         if not any(fnmatchcase(file, pattern) for pattern in allowed):
             findings.append(RuleFinding(
-                rule_id="W001", resource=file,
-                title="Agent file outside allowed scope", severity="critical",
+                rule_id=W001_ID, resource=file,
+                title=W001_TITLE, severity="critical",
                 message=f"Agent {name} is not allowed to change {file}.",
                 headline=f"Agent {name} changed {file} outside its allowed scope",
                 why_it_matters="An agent editing files outside its allowlist can bypass its assigned boundary.",
                 how_to_fix=f"Have the authorized owner make the change, or move it into {name}'s approved scope.",
+                name=W001_NAME, applies_to=W001_APPLIES_TO,
+                source_tool="agent", cloud="n/a",
             ))
     return tuple(findings)
 
@@ -109,7 +117,8 @@ def apply_exceptions(
     result: list[RuleFinding] = []
     for finding in findings:
         matched = next((item for item in exceptions
-                        if item["rule_id"] == finding.rule_id
+                        if (item["rule_id"].upper() == finding.rule_id.upper()
+                            or item["rule_id"].lower() == finding.name.lower())
                         and item["resource"] == finding.resource), None)
         if matched is None:
             result.append(finding)

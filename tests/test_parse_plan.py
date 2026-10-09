@@ -17,7 +17,7 @@ def test_act1_replaces_a_tagged_database() -> None:
     change = changes[0]
     assert change.address == "aws_db_instance.orders"
     assert change.resource_type == "aws_db_instance"
-    assert change.canonical_type == "database_instance"
+    assert change.canonical_type == "data_store"
     assert change.source_tool == "terraform"
     assert change.actions == ("delete", "create")
     assert change.is_replace
@@ -57,6 +57,7 @@ def test_act5_opens_database_port_to_internet() -> None:
     assert len(changes) == 1
     rule = changes[0]
     assert rule.resource_type == "aws_security_group_rule"
+    assert rule.canonical_type == "network_ingress"
     assert rule.after["from_port"] == 1433
     assert rule.after["to_port"] == 1433
     assert "0.0.0.0/0" in rule.after["cidr_blocks"]
@@ -87,3 +88,25 @@ def test_removed_tags_are_not_inherited_from_prior_state() -> None:
 def test_unknown_adapter_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unsupported plan source tool"):
         parse_plan({}, source_tool="unknown")
+
+
+@pytest.mark.parametrize(("resource_type", "canonical_type"), [
+    ("aws_db_instance", "data_store"),
+    ("aws_rds_cluster", "data_store"),
+    ("aws_ebs_volume", "data_store"),
+    ("aws_s3_bucket", "data_store"),
+    ("aws_security_group", "network_ingress"),
+    ("aws_security_group_rule", "network_ingress"),
+    ("aws_vpc_security_group_ingress_rule", "network_ingress"),
+    ("aws_s3_bucket_server_side_encryption_configuration", "encryption_config"),
+    ("aws_backup_plan", "backup_config"),
+    ("aws_db_parameter_group", "engine_config"),
+])
+def test_terraform_resource_maps_to_canonical_type(
+    resource_type: str, canonical_type: str,
+) -> None:
+    plan = {"resource_changes": [{
+        "address": f"{resource_type}.synthetic", "type": resource_type,
+        "change": {"actions": ["create"], "before": None, "after": {}},
+    }]}
+    assert parse_plan(plan)[0].canonical_type == canonical_type

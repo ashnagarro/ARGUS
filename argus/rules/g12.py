@@ -38,7 +38,9 @@ def _ports(ingress: dict[str, Any]) -> tuple[int, ...]:
 
 class PublicManagementPort(Rule):
     id = "G12"
-    title = "Management port open to the internet"
+    name = "management-port-exposed-to-internet"
+    title = "Management port open to the public internet"
+    applies_to = ("terraform/aws",)
     severity = "high"
     why_it_matters = "Public SSH or RDP ingress exposes management services to internet traffic."
     how_to_fix = "Restrict the ingress CIDR to an approved private network or use a managed access path."
