@@ -12,6 +12,17 @@ py -3 -m venv .venv
 
 Keep credentials in environment variables. `OPENAI_API_KEY` is needed only for `--live` Scholar runs. `CODEX_API_KEY` is needed when Smith compiles a rule. Neither belongs in a project file. Configure the Scholar model and optional Codex executable or home in `argus.toml`.
 
+## Works now vs Prototype
+
+| Feature | State | Configuration |
+| --- | --- | --- |
+| Terraform plan checks, secret redaction, four-act demo, ledger archive, offline console, MCP tools, local web upload | Works now | Core commands; `python -m argus serve --port 8765` binds to 127.0.0.1 |
+| Policy from English, governance rule pack, team overlays | Works now | `policy_compiler`, `governance_pack`, `team_overlays` are enabled in `argus.toml` |
+| CAB brief, rollback notes, compliance mapping, cost delta, learning report, control coverage, CloudFormation adapter | Prototype / roadmap | Their flags are disabled in `argus.toml` |
+| Act 7 real-plan comparison | Prototype / roadmap | The supplied fixed fixture has the same risky resource settings; the attempted Act 7 task was reverted after two failed test gates |
+
+The web page accepts Terraform plan JSON up to 5 MB, stores a redacted copy in ignored `ledger/uploads/`, and enables live AI research only when `OPENAI_API_KEY` is set. Its six sample buttons include both Act 7 fixtures; the fixed button is labeled with the current fixture limitation.
+
 ## Review a plan
 
 ```powershell
@@ -72,6 +83,6 @@ Register the local MCP server using [docs/CODEX_PLUGIN.md](docs/CODEX_PLUGIN.md)
 
 ## Corpus and packaging
 
-`argus corpus fetch` mechanically extracts public reference text into `corpus/`. Do not hand-edit those files. `scripts/package.ps1` creates `dist/argus-demo.zip` from committed files only, so ignored caches, ledgers, keys, and virtual environments stay out of the package.
+`argus corpus fetch` mechanically extracts public reference text into `corpus/`. Do not hand-edit those files. `scripts/package_submission.ps1` creates `dist/argus-demo.zip` from committed files and verifies that the ZIP excludes caches, Terraform work directories, keys, uploads, and virtual environments. Its secret scan permits the clearly marked fake credential in the risky test fixture.
 
-See [the implementation plan](docs/PLAN.md) and [the build log](BUILD_LOG.md).
+See [the implementation plan](docs/PLAN.md), [the build log](docs/BUILD_LOG.md), and [the overnight task log](docs/OVERNIGHT_LOG.md).

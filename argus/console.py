@@ -293,7 +293,8 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
             f'<td>{float(record.get("elapsed_seconds", 0)):.2f}</td></tr>'
             f'<tr id="{target}" class="detail-row" hidden><td colspan="6">'
             '<h3>Findings</h3>' + _findings(record, rule_catalog)
-            + '<h3>Conditions</h3>' + _conditions(record)
+            + ('<h3>Required fixes before merge</h3>' if record.get("verdict") == "NO-GO"
+               else '<h3>Conditions</h3>') + _conditions(record)
             + '<h3>Agentic-loop timeline</h3>' + _timeline(root, record)
             + '</td></tr>'
         )

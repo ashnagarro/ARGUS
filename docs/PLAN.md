@@ -196,7 +196,7 @@ Done when: running demo all 3 times gives identical verdicts.
 - `python -m argus demo --present` runs the offline demo and writes a self-contained,
   projector-readable `reports/presentation.html` with the four scenario verdicts and the
   learned-rule before/after comparison.
-- BUILD_LOG.md records the implemented phases, decisions, and verified test results.
+- docs/BUILD_LOG.md records the implemented phases, decisions, and verified test results.
 - README.md explains setup, configuration, offline and live commands, compile approval,
   run history, and the demo.
 - `scripts/package.ps1` packages committed project files into `dist/argus-demo.zip` using

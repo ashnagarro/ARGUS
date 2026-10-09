@@ -403,6 +403,7 @@ def run_check(
         raise ValueError("--changed-files requires --author agent:<name>")
     policy = load_policy(_asset_path("permissions.yaml"))
     permission_asks: list[str] = []
+    human_sensitive_types: list[str] = []
     for change in changes:
         decision = decide_permission("get_change", change.resource_type,
                                      is_write=False, policy=policy)
@@ -410,7 +411,17 @@ def run_check(
                                "resource": change.address, "decision": decision.decision,
                                "reason": decision.reason})
         if not decision.approved:
-            permission_asks.append(f"Approval required to review {change.address}: {decision.reason}.")
+            if not author.startswith("agent:") and decision.reason == "sensitive resource type":
+                human_sensitive_types.append(change.resource_type)
+            else:
+                permission_asks.append(f"Approval required to review {change.address}: {decision.reason}.")
+    if human_sensitive_types:
+        count = len(human_sensitive_types)
+        types = ", ".join(sorted(set(human_sensitive_types)))
+        permission_asks.append(
+            f"Approval required to review {count} sensitive {'resource' if count == 1 else 'resources'} "
+            f"({types})."
+        )
     for file in changed_files:
         decision = decide_permission("agent_change", "", is_write=True, policy=policy)
         _append_trace(run_id, {"event": "permission_decision", "action": "agent_change",

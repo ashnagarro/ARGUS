@@ -112,7 +112,8 @@ def result_page(record: dict[str, Any]) -> bytes:
             f"<p>Run ID: <code>{_e(record.get('run_id', ''))}</code></p>"
             f"<p><a href='/'>Check another plan</a> · <a href='/console'>Console</a></p></main>"
             "<section><h2>Findings</h2>" + ("".join(cards) if cards else "<p>None.</p>") + "</section>"
-            "<section><h2>Conditions</h2>" + _list(record.get("conditions") or []) + "</section>"
+            "<section><h2>" + ("Required fixes before merge" if verdict == "NO-GO" else "Conditions")
+            + "</h2>" + _list(record.get("conditions") or []) + "</section>"
             "<section><h2>Step timeline</h2>" + _list(record.get("trace_steps") or [], ordered=True) + "</section>"
             "<section><h2>Ask you</h2>" + _list(record.get("ask_you") or []) + "</section>")
     return _document("Review result", body)

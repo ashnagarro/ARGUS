@@ -125,6 +125,10 @@ def _ask_items(report: Report) -> tuple[str, ...]:
     return tuple(items)
 
 
+def conditions_heading(verdict: str) -> str:
+    return "Required fixes before merge" if verdict == "NO-GO" else "Conditions to merge"
+
+
 def _compile_hint(finding: AIFinding) -> str:
     return f"Run: python -m argus compile {finding.id} to make this a rule"
 
@@ -205,7 +209,7 @@ def render_terminal(report: Report) -> str:
     else:
         lines.append("None.")
 
-    lines.extend(["", "Conditions to merge"])
+    lines.extend(["", conditions_heading(report.verdict)])
     lines.extend(f"- {_single_line(item)}" for item in report.conditions)
     if not report.conditions:
         lines.append("None.")
@@ -291,7 +295,7 @@ def render_markdown(report: Report) -> str:
     else:
         lines.append("None.")
 
-    lines.extend(["", "## Conditions to merge", ""])
+    lines.extend(["", f"## {conditions_heading(report.verdict)}", ""])
     lines.extend(f"- {_markdown_text(item)}" for item in report.conditions)
     if not report.conditions:
         lines.append("None.")
@@ -409,7 +413,7 @@ def render_html(report: Report) -> str:
         for title, items in (
             ("RULE", rules), ("AI VERIFIED", verified_items),
             ("AI UNVERIFIED", unverified_items),
-            ("Conditions to merge", conditions), ("Steps", steps),
+            (conditions_heading(report.verdict), conditions), ("Steps", steps),
         ) if items
     )
     sections += f"<section><h2>Ask you</h2>{_html_group(ask_items)}</section>\n"
