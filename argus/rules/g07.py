@@ -5,6 +5,8 @@ from typing import Sequence
 from argus.models import Change, RuleFinding
 from argus.rules import Rule
 
+from ._governance import tag_values
+
 
 class ClassifiedStorageEncryptionDisabled(Rule):
     id = "G07"
@@ -20,11 +22,11 @@ class ClassifiedStorageEncryptionDisabled(Rule):
 
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         field = self._fields.get(change.resource_type)
-        classification = change.tags.get("data_classification")
-        if (field is not None and isinstance(classification, str) and classification.strip()
+        classifications = tag_values(change, "data_classification")
+        if (field is not None and classifications
                 and change.after is not None and change.after.get(field) is False):
             return [self.finding(
                 change,
-                f"{field} is false on a resource classified as {classification!r}.",
+                f"{field} is false on a resource classified as {classifications[0]!r}.",
             )]
         return []

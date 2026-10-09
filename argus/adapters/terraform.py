@@ -38,9 +38,10 @@ def _state(value: Any, field: str, address: str) -> dict[str, Any] | None:
 
 def _tags(before: dict[str, Any] | None, after: dict[str, Any] | None) -> dict[str, str]:
     tags: dict[str, str] = {}
-    for state in (before, after):
-        if state is None:
-            continue
+    # Use the planned state for updates; merging before and after would hide
+    # tag removals from governance rules. Deletes retain the prior tags.
+    state = after if after is not None else before
+    if state is not None:
         for key in ("tags_all", "tags"):
             value = state.get(key)
             if isinstance(value, dict):

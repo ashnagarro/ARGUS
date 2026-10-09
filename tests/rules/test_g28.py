@@ -13,3 +13,13 @@ def test_distinct_human_approver_satisfies_rule(governance_change) -> None:
     change = governance_change(resource_type="aws_iam_policy")
     context = GovernanceContext(author="agent:synthetic", approver="reviewer-synthetic")
     assert SensitiveAgentApproval().check_context((change,), context) == []
+
+
+def test_standalone_vpc_security_group_rule_requires_approver(governance_change) -> None:
+    change = governance_change(resource_type="aws_vpc_security_group_ingress_rule")
+
+    findings = SensitiveAgentApproval().check_context(
+        (change,), GovernanceContext(author="agent:synthetic"),
+    )
+
+    assert [item.rule_id for item in findings] == ["G28"]

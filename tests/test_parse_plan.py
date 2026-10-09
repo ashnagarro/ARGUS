@@ -73,6 +73,17 @@ def test_clean_change_updates_tags_only() -> None:
     assert change.tags == change.after["tags"]
 
 
+def test_removed_tags_are_not_inherited_from_prior_state() -> None:
+    plan = {"resource_changes": [{
+        "address": "aws_db_instance.synthetic", "type": "aws_db_instance",
+        "change": {"actions": ["update"],
+                   "before": {"tags": {"env": "prod", "owner": "synthetic-team"}},
+                   "after": {"tags": {"env": "dev"}}},
+    }]}
+    change = parse_plan(plan)[0]
+    assert change.tags == {"env": "dev"}
+
+
 def test_unknown_adapter_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unsupported plan source tool"):
         parse_plan({}, source_tool="unknown")

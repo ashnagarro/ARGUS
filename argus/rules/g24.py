@@ -1,4 +1,4 @@
-"""G24: require a change ticket for production resources."""
+"""G24: require a ticket for resources tagged production before or after a change."""
 
 from __future__ import annotations
 

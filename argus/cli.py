@@ -84,6 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--from", dest="from_plan", type=Path,
                         help="Replay this plan offline, then compile its finding.")
 
+    policy_command = commands.add_parser(
+        "policy", help="Compile a human-approved English policy into a rule."
+    )
+    policy_command.add_argument("sentence", help="One precise policy sentence.")
+
     demo = commands.add_parser("demo", help="Run a demonstration scenario.")
     demo.add_argument(
         "scenario",
@@ -276,6 +281,32 @@ def run_compile(
     return 0
 
 
+def run_policy(sentence: str) -> int:
+    """Compile a user policy only when its optional feature is enabled."""
+    from .policy import compile_policy
+
+    settings = _settings()
+    flags = settings.get("flags", {})
+    if not isinstance(flags, dict) or flags.get("policy_compiler") is not True:
+        print("argus policy: enable [flags] policy_compiler = true in argus.toml.",
+              file=sys.stderr)
+        return 2
+    smith_settings = settings.get("smith", {})
+    print(f"Policy: {sentence.strip()}")
+    result = compile_policy(
+        sentence, PROJECT_ROOT, approve=_approve_smith_write,
+        codex_executable=smith_settings.get("codex_executable", "codex"),
+        codex_home=smith_settings.get("codex_home"),
+    )
+    if result.status != "compiled":
+        print(f"Ask you: {result.reason or 'Smith needs human review.'}")
+        print(f"Trace: {result.trace_path}")
+        return 2
+    print(f"Compiled {result.rule_id} from human-supplied policy in {result.attempts} attempt(s).")
+    print(f"Trace: {result.trace_path}")
+    return 0
+
+
 def run_check(
     plan: Path, report_dir: Path = Path("reports"), *,
     scholar_mode: str | None = None,
@@ -334,7 +365,10 @@ def run_check(
 
         source_files = tuple(dict.fromkeys((*(Path(plan).parent.glob("*.tf")), *tf_files)))
         context = context_from_settings(
-            settings, ticket=ticket, author=author, approver=approver,
+            settings, ticket=ticket,
+            # A read-only MCP review is performed by an agent, but the plan's
+            # change author is unknown. Do not treat the reviewer as its author.
+            author=author if check_agent_scope else "unknown", approver=approver,
             tf_files=source_files, ledger_recorded=True,
         )
         rule_findings = tuple(run_rules(
@@ -629,6 +663,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                                from_plan=args.from_plan)
         except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"argus compile: {error}", file=sys.stderr)
+            return 2
+    if args.command == "policy":
+        try:
+            return run_policy(args.sentence)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"argus policy: {error}", file=sys.stderr)
             return 2
     if args.command == "demo":
         try:

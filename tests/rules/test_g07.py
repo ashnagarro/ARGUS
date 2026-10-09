@@ -44,3 +44,16 @@ def test_unclassified_encrypted_or_deleted_storage_does_not_trigger() -> None:
     rule = ClassifiedStorageEncryptionDisabled()
     for change in (unclassified, encrypted, deleted):
         assert rule.check(change, [change]) == []
+
+
+def test_classification_removal_does_not_hide_encryption_downgrade() -> None:
+    change = replace(
+        _storage("aws_ebs_volume", "encrypted", False, True),
+        before={"encrypted": True, "tags": {"data_classification": "fake-confidential"}},
+        after={"encrypted": False, "tags": {}},
+        tags={},
+    )
+
+    findings = ClassifiedStorageEncryptionDisabled().check(change, [change])
+
+    assert [item.rule_id for item in findings] == ["G07"]

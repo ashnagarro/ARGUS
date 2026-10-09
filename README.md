@@ -23,6 +23,16 @@ Keep credentials in environment variables. `OPENAI_API_KEY` is needed only for `
 
 To compile a verified finding, run `argus compile F1 --run <run_id>` or `argus compile F1 --from <plan>`. Smith asks for human approval before its write attempts, runs tests, checks file scope, and records the result. A compiled rule is enforced on later checks.
 
+## Policy from English
+
+With `[flags] policy_compiler = true` in `argus.toml`, Smith can compile a human-supplied sentence into a deterministic rule and a positive and negative test:
+
+```powershell
+.\.venv\Scripts\python -m argus policy "A change must not remove the owner tag from a resource."
+```
+
+This uses the existing `CODEX_API_KEY` and `[smith]` settings. Smith asks for approval before writing, makes at most three attempts, runs the generated tests, and keeps changes within `argus/rules/` and `tests/rules/`. A failed compile rolls back those files and reports `needs human`. The rule records the exact policy sentence and approval date. This command expresses your policy; it does not claim a supporting corpus citation. Review the proposed sentence carefully before approving because its rule will be enforced on later checks.
+
 ## Demo
 
 ```powershell

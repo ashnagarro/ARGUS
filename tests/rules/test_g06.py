@@ -35,6 +35,16 @@ def test_key_deletion_triggers() -> None:
     assert "deleted" in findings[0].message
 
 
+def test_key_replacement_flags_old_key_deletion() -> None:
+    change = replace(_key(True), actions=("delete", "create"), is_replace=True)
+
+    findings = KMSKeyProtection().check(change, [change])
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "G06"
+    assert "old key" in findings[0].message
+
+
 def test_rotation_enabled_does_not_trigger() -> None:
     change = _key(True)
 

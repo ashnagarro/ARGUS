@@ -27,4 +27,6 @@ class SensitiveAgentApproval(ContextRule):
         return [context_finding(self, change.address,
                                 "Agent change to IAM, security group, or KMS lacks a human approver.")
                 for change in changes
-                if change.resource_type.startswith(("aws_iam_", "aws_security_group", "aws_kms_"))]
+                if change.resource_type.startswith((
+                    "aws_iam_", "aws_security_group", "aws_vpc_security_group", "aws_kms_",
+                ))]

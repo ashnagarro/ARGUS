@@ -192,7 +192,8 @@ def _learned(root: Path) -> list[dict]:
                 entry = json.loads(line)
             except ValueError:
                 continue
-            if entry.get("type") == "compile" and entry.get("status") == "compiled" and entry.get("rule_id"):
+            if (entry.get("type") in {"compile", "policy_compile"}
+                    and entry.get("status") == "compiled" and entry.get("rule_id")):
                 compiled[entry["rule_id"]] = entry
     installed = {rule.id: rule for rule in load_rules()}
     documents = load_corpus(root / "corpus") if (root / "corpus").is_dir() else {}
@@ -207,8 +208,11 @@ def _learned(root: Path) -> list[dict]:
                             "url": doc.url if doc else ""})
         results.append({
             "rule_id": rule_id,
-            "source_finding": getattr(rule, "source_finding_id", "") or (entry.get("finding_ids") or [""])[0],
+            "source_finding": ("human policy" if entry.get("type") == "policy_compile"
+                               else getattr(rule, "source_finding_id", "")
+                               or (entry.get("finding_ids") or [""])[0]),
             "sources": sources,
+            "policy": entry.get("type") == "policy_compile",
             "enforced": rule is not None,
             "test_status": "passed at compile" if (rule is not None and
                 (root / "tests" / "rules" / f"test_{rule_id.lower()}.py").is_file()) else "not confirmed",
@@ -271,7 +275,8 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
         sources = ', '.join(
             f'{_source_link(doc["url"], doc["doc_id"])} (retrieved {_safe(doc["date"])})'
             for doc in item["sources"]
-        ) or "No source document recorded"
+        ) or ("Human-supplied policy (no corpus citation)" if item["policy"]
+              else "No source document recorded")
         library.append(
             f'<tr><td>{_safe(item["rule_id"])}</td><td>{_safe(item["source_finding"])}</td>'
             f'<td>{sources}</td><td>{"ENFORCED" if item["enforced"] else "not installed"}</td>'

@@ -16,8 +16,10 @@ class KMSKeyProtection(Rule):
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         if change.resource_type != "aws_kms_key":
             return []
-        if "delete" in change.actions and "create" not in change.actions:
-            return [self.finding(change, "KMS key is deleted.")]
+        if "delete" in change.actions:
+            message = ("KMS key is replaced; the old key is scheduled for deletion."
+                       if "create" in change.actions else "KMS key is deleted.")
+            return [self.finding(change, message)]
         if change.after is not None and change.after.get("enable_key_rotation") is False:
             return [self.finding(change, "KMS key rotation is disabled.")]
         return []

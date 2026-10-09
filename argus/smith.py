@@ -70,6 +70,11 @@ def _snapshot(root: Path, trace_path: Path) -> dict[Path, bytes]:
     files: dict[Path, bytes] = {}
     for directory, children, names in os.walk(root, followlinks=False):
         children[:] = [name for name in children if name not in _IGNORED_DIRS]
+        # The user-owned Terraform example is outside Smith's write scope.
+        # In particular, a lockfile created after the snapshot must never be
+        # removed by rollback.
+        if Path(directory) == root / "examples":
+            children[:] = [name for name in children if name != "agent-demo"]
         for name in names:
             path = Path(directory) / name
             if path == trace_path or path.is_symlink():

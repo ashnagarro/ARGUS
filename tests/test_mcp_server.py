@@ -95,6 +95,25 @@ def test_mcp_check_and_explain_write_ledger_only(tmp_path: Path, monkeypatch) ->
     assert not (tmp_path / "reports").exists()
 
 
+def test_mcp_reviewer_is_not_treated_as_sensitive_change_author(tmp_path: Path, monkeypatch) -> None:
+    plan = _isolated_project(tmp_path, monkeypatch)
+    (tmp_path / "argus.toml").write_text("[flags]\ngovernance_pack = true\n", encoding="utf-8")
+    payload = json.loads(plan.read_text(encoding="utf-8"))
+    resource = payload["resource_changes"][0]
+    resource["address"] = "aws_iam_role.synthetic"
+    resource["type"] = "aws_iam_role"
+    resource["name"] = "synthetic"
+    resource["change"]["actions"] = ["update"]
+    resource["change"]["before"] = {"tags": {"env": "dev"}}
+    resource["change"]["after"] = {"tags": {"env": "dev"}}
+    plan.write_text(json.dumps(payload), encoding="utf-8")
+
+    outcome = mcp_server.argus_check("fixtures/plans/act1.json")
+    assert all(finding["rule_id"] != "G28" for finding in outcome["findings"])
+    run = json.loads((tmp_path / "ledger" / "runs" / f"{outcome['run_id']}.json").read_text(encoding="utf-8"))
+    assert run["author"] == "agent:codex"
+
+
 def test_mcp_rejects_plan_outside_project_and_logs_failure(tmp_path: Path, monkeypatch) -> None:
     _isolated_project(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="inside the ARGUS project"):

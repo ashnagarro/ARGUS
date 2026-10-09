@@ -5,6 +5,8 @@ from collections.abc import Sequence
 from argus.models import Change, RuleFinding
 from argus.rules import Rule
 
+from ._governance import is_production
+
 
 class G18ProductionMultiAzDisabled(Rule):
     id = "G18"
@@ -16,7 +18,7 @@ class G18ProductionMultiAzDisabled(Rule):
     def check(self, change: Change, all_changes: Sequence[Change]) -> list[RuleFinding]:
         if change.resource_type != "aws_db_instance":
             return []
-        if change.tags.get("env", "").lower() not in {"prod", "production"}:
+        if not is_production(change):
             return []
         before = change.before or {}
         after = change.after or {}
