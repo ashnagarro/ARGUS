@@ -134,11 +134,12 @@ Done when: tests pass with mocked AI. Then tell me the exact command to run act2
 
 === PHASE 7: Smith (learning loop) ===
 python -m argus compile <finding_id>: take a VERIFIED finding from the last run. Smith keeps using
-codex exec to write rule code, authenticated by CODEX_API_KEY from the environment. Set CODEX_HOME
-to .codex-home/ inside the project and add .codex-home/ to .gitignore. Make the codex executable
+codex exec to write rule code, authenticated by CODEX_API_KEY from the environment. Leave CODEX_HOME
+unset by default so Codex uses the user's trusted home; allow an optional smith.codex_home in
+argus.toml. Keep .codex-home/ in .gitignore for users who configure it. Make the codex executable
 path configurable in argus.toml (default "codex"). Check codex exec --help for the command-line
 config override; explicitly set reasoning effort to "high", never relying on the user's default.
-Request human approval before each write action, then run codex exec (workspace write allowed)
+Request human approval once per compile for up to three write attempts, then run codex exec (workspace write allowed)
 to write argus/rules/<new_id>.py and tests/rules/test_<new_id>.py. The rule docstring must cite
 the finding's doc_id and retrieved_at. Positive test uses act2_major_upgrade.json; negative
 test uses clean_change.json.
@@ -271,7 +272,8 @@ Start now with PHASE 0 only. Then stop and wait for me.
 - Before writing API code, check the installed openai package version and follow its documented
   Responses API for function tools and structured output. Do not guess parameter names.
 - Smith keeps using codex exec to write rule code, authenticated by the CODEX_API_KEY environment
-  variable, with CODEX_HOME set to .codex-home/ inside the project (add .codex-home/ to .gitignore).
+  variable. CODEX_HOME is unset by default; smith.codex_home in argus.toml can override it.
+  Keep .codex-home/ in .gitignore for users who configure it there.
 - The codex executable path must be configurable in argus.toml (default "codex").
 - Smith must run codex with reasoning effort "high", not ultra; check codex exec --help for how
   to override config on the command line, and do not rely on the user's default.

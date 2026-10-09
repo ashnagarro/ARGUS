@@ -205,6 +205,7 @@ def compile_finding(
     *,
     approve: Approve | None,
     codex_executable: str = "codex",
+    codex_home: str | None = None,
     run_id: str | None = None,
     runner: Runner = subprocess.run,
     before_ai_calls: int | None = None,
@@ -212,8 +213,8 @@ def compile_finding(
 ) -> CompileResult:
     """Ask approval, run Codex at most three times, and verify the learned rule.
 
-    ``approve`` must be supplied by the caller. It is called before every Codex
-    write attempt; missing or denied approval never starts a subprocess.
+    ``approve`` must be supplied by the caller. It is called once before Codex
+    starts; missing or denied approval never starts a subprocess.
     """
     root = Path(project_root).resolve()
     run_id = run_id or uuid4().hex
@@ -272,33 +273,34 @@ def compile_finding(
         return finish("CODEX_API_KEY is not set in the environment.")
     previous_failure = ""
 
+    resource_type = finding.resource.split(".", 1)[0]
+    decision = decide_permission(
+        "smith_write_rule", resource_type, is_write=True, policy=policy,
+    )
+    _append_trace(trace_path, {"event": "permission_decision",
+                               "action": "smith_write_rule",
+                               "decision": decision.decision, "reason": decision.reason})
+    action = (
+        f"Allow Smith up to 3 attempts to write argus/rules/{slug}.py "
+        f"and tests/rules/test_{slug}.py?"
+    )
+    granted = False if approve is None else bool(approve(action))
+    _append_trace(trace_path, {"event": "human_approval", "granted": granted})
+    if not granted:
+        return finish("Human approval is required for Smith to write a rule.")
+
     for attempt in range(1, 4):
         attempts = attempt
         _append_trace(trace_path, {"event": "smith_attempt", "attempt": attempt,
                                    "rule_id": rule_id})
-        resource_type = finding.resource.split(".", 1)[0]
-        decision = decide_permission(
-            "smith_write_rule", resource_type, is_write=True, policy=policy,
-        )
-        _append_trace(trace_path, {"event": "permission_decision",
-                                   "action": "smith_write_rule", "attempt": attempt,
-                                   "decision": decision.decision, "reason": decision.reason})
-        action = (
-            f"Smith attempt {attempt}/3: allow codex exec to write "
-            f"argus/rules/{slug}.py and tests/rules/test_{slug}.py?"
-        )
-        granted = False if approve is None else bool(approve(action))
-        _append_trace(trace_path, {"event": "human_approval", "attempt": attempt,
-                                   "granted": granted})
-        if not granted:
-            _restore(root, baseline, _snapshot(root, trace_path))
-            return finish("Human approval is required for Smith to write a rule.")
-
         environment = os.environ.copy()
         environment.pop("OPENAI_API_KEY", None)
-        codex_home = root / ".codex-home"
-        codex_home.mkdir(parents=True, exist_ok=True)
-        environment["CODEX_HOME"] = str(codex_home)
+        environment.pop("CODEX_HOME", None)
+        if codex_home:
+            configured_home = Path(codex_home)
+            if not configured_home.is_absolute():
+                configured_home = root / configured_home
+            environment["CODEX_HOME"] = str(configured_home.resolve())
         command = [
             codex_executable, "exec", "-c", 'model_reasoning_effort="high"',
             "-s", "workspace-write", "-C", str(root), "-",
@@ -329,6 +331,11 @@ def compile_finding(
         if violations:
             _restore(root, baseline, current)
             return finish("Codex changed files outside argus/rules and tests/rules; changes were rolled back.")
+        if invocation.returncode == 0 and not changed:
+            reason = "codex ran read-only (project not trusted or sandbox restricted)"
+            _append_trace(trace_path, {"event": "attempt_failure", "attempt": attempt,
+                                       "reason": reason})
+            return finish(reason)
         if invocation.returncode != 0:
             previous_failure = f"codex exec failed (exit {invocation.returncode}): {output}"
             _append_trace(trace_path, {"event": "attempt_failure", "attempt": attempt,

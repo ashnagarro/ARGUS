@@ -132,7 +132,7 @@ def run_tool(command: str, args: argparse.Namespace) -> int:
 
 
 def _approve_smith_write(action: str) -> bool:
-    """Require an affirmative human answer before each Smith write attempt."""
+    """Require an affirmative human answer before Smith writes a rule."""
     print(f"Approval required: {action}")
     try:
         answer = input("Approve this write? [y/N] ")
@@ -167,10 +167,12 @@ def run_compile(finding_id: str) -> int:
     )
     baseline_path = PROJECT_ROOT / ".cache" / "act3_baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.is_file() else {}
-    executable = _settings().get("smith", {}).get("codex_executable", "codex")
+    smith_settings = _settings().get("smith", {})
+    executable = smith_settings.get("codex_executable", "codex")
     result = compile_finding(
         finding, PROJECT_ROOT, approve=_approve_smith_write,
         codex_executable=executable,
+        codex_home=smith_settings.get("codex_home"),
         before_ai_calls=baseline.get("ai_calls"),
         before_seconds=baseline.get("elapsed_seconds"),
     )

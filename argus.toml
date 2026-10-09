@@ -3,6 +3,7 @@ model = "gpt-6.1-sol"
 
 [smith]
 codex_executable = "codex"
+# Optional: set codex_home to a trusted Codex home. Unset uses your normal Codex home.
 
 [flags]
 policy_compiler = false

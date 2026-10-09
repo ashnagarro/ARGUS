@@ -32,6 +32,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "permissions.yaml").write_bytes(policy.read_bytes())
     monkeypatch.setenv("CODEX_API_KEY", "smith-test-key")
     monkeypatch.setenv("OPENAI_API_KEY", "scholar-test-key")
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "inherited-untrusted-home"))
     monkeypatch.setattr(smith, "parse_plan", lambda path: path.name)
     monkeypatch.setattr(smith, "run_rules", lambda fixture: [] if fixture == "clean_change.json" else [
         RuleFinding(
@@ -101,7 +102,7 @@ def test_compiles_with_approval_high_reasoning_and_zero_ai_calls(project: Path) 
     assert len(approvals) == 1
     assert commands[0][:4] == ["custom-codex", "exec", "-c", 'model_reasoning_effort="high"']
     assert commands[0][4:8] == ["-s", "workspace-write", "-C", str(project)]
-    assert environments[0]["CODEX_HOME"] == str(project / ".codex-home")
+    assert "CODEX_HOME" not in environments[0]
     assert environments[0]["CODEX_API_KEY"] == "smith-test-key"
     assert "OPENAI_API_KEY" not in environments[0]
     assert not any(name.endswith("API_KEY") for name in environments[1])
@@ -130,7 +131,7 @@ def test_denied_approval_never_runs_codex(project: Path) -> None:
         run_id="smith-denied", runner=runner,
     )
     assert result.status == "needs human"
-    assert result.attempts == 1
+    assert result.attempts == 0
     assert not (project / "argus/rules/r007.py").exists()
     assert any(event.get("event") == "human_approval" and event.get("granted") is False
                for event in trace_events(project, "smith-denied"))
@@ -186,7 +187,9 @@ def test_retries_failed_test_and_passes_failure_to_codex(project: Path) -> None:
     )
     assert result.status == "compiled"
     assert result.attempts == 2
-    assert approvals == 2
+    assert approvals == 1
+    assert len([event for event in trace_events(project, "smith-retry")
+                if event.get("event") == "permission_decision"]) == 1
     assert len(prompts) == 2
     assert "synthetic assertion failed" in prompts[1]
 
@@ -212,6 +215,45 @@ def test_three_failed_attempts_return_needs_human_and_restore(project: Path) -> 
     assert "synthetic test failure" in (result.reason or "")
     assert not (project / "argus/rules/r007.py").exists()
     assert not (project / "tests/rules/test_r007.py").exists()
+
+
+def test_success_without_file_changes_reports_read_only_once(project: Path) -> None:
+    calls = 0
+    approvals = 0
+
+    def runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        assert "-s" in command and command[command.index("-s") + 1] == "workspace-write"
+        assert 'model_reasoning_effort="high"' in command
+        return subprocess.CompletedProcess(command, 0, "Workspace is read-only", "")
+
+    def approve(action: str) -> bool:
+        nonlocal approvals
+        approvals += 1
+        return True
+
+    result = smith.compile_finding(
+        finding(), project, approve=approve, run_id="smith-read-only", runner=runner,
+    )
+    assert result.status == "needs human"
+    assert result.attempts == 1
+    assert result.reason == "codex ran read-only (project not trusted or sandbox restricted)"
+    assert calls == approvals == 1
+    assert any(event.get("event") == "attempt_failure" and event.get("reason") == result.reason
+               for event in trace_events(project, "smith-read-only"))
+
+
+def test_configured_codex_home_is_passed_to_runner(project: Path) -> None:
+    def runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert kwargs["env"]["CODEX_HOME"] == str(project / ".codex-home")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    result = smith.compile_finding(
+        finding(), project, approve=lambda action: True,
+        codex_home=".codex-home", run_id="smith-configured-home", runner=runner,
+    )
+    assert result.status == "needs human"
 
 
 def test_unverified_finding_is_never_sent_to_codex(project: Path) -> None:

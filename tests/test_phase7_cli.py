@@ -30,7 +30,8 @@ def _latest(root: Path, finding: AIFinding) -> None:
         json.dumps({"ai_findings": [asdict(finding)]}), encoding="utf-8",
     )
     (root / "argus.toml").write_text(
-        '[smith]\ncodex_executable = "custom-codex"\n', encoding="utf-8",
+        '[smith]\ncodex_executable = "custom-codex"\n'
+        'codex_home = ".codex-home"\n', encoding="utf-8",
     )
 
 
@@ -49,6 +50,7 @@ def test_compile_uses_last_verified_finding_config_and_approval(
         assert finding.verified is True
         assert project_root == tmp_path
         assert kwargs["codex_executable"] == "custom-codex"
+        assert kwargs["codex_home"] == ".codex-home"
         assert kwargs["approve"]("synthetic rule write") is True
         assert kwargs["before_ai_calls"] == 3
         assert kwargs["before_seconds"] == 4.5
@@ -78,3 +80,20 @@ def test_compile_rejects_unverified_last_finding_before_smith(
 
     assert cli.run_compile("AI-SYNTHETIC") == 2
     assert "UNVERIFIED" in capsys.readouterr().err
+
+
+def test_read_only_smith_reason_appears_in_ask_you(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys,
+) -> None:
+    _latest(tmp_path, _finding())
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    reason = "codex ran read-only (project not trusted or sandbox restricted)"
+    monkeypatch.setattr(smith, "compile_finding", lambda finding, root, **kwargs:
+                        smith.CompileResult(
+                            status="needs human", finding_id=finding.id, rule_id="R007",
+                            attempts=1, reason=reason,
+                            trace_path=root / "ledger" / "traces" / "test.jsonl",
+                        ))
+
+    assert cli.run_compile("AI-SYNTHETIC") == 2
+    assert f"Ask you: {reason}" in capsys.readouterr().out
