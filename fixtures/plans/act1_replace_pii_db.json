@@ -1,0 +1,60 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.orders",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "orders",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "before": {
+          "identifier": "orders-prod",
+          "engine": "sqlserver-se",
+          "engine_version": "15.00",
+          "instance_class": "db.m5.large",
+          "parameter_group_name": "orders-sqlserver-se-15",
+          "deletion_protection": true,
+          "skip_final_snapshot": false,
+          "storage_encrypted": true,
+          "backup_retention_period": 14,
+          "tags": {
+            "env": "prod",
+            "data_classification": "pii-ssn",
+            "owner": "synthetic-team"
+          }
+        },
+        "after": {
+          "identifier": "orders-prod-replacement",
+          "engine": "sqlserver-se",
+          "engine_version": "15.00",
+          "instance_class": "db.m5.large",
+          "parameter_group_name": "orders-sqlserver-se-15",
+          "deletion_protection": true,
+          "skip_final_snapshot": false,
+          "storage_encrypted": true,
+          "backup_retention_period": 14,
+          "tags": {
+            "env": "prod",
+            "data_classification": "pii-ssn",
+            "owner": "synthetic-team"
+          }
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": {},
+        "after_sensitive": {},
+        "replace_paths": [
+          [
+            "identifier"
+          ]
+        ]
+      }
+    }
+  ]
+}

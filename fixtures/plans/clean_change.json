@@ -1,0 +1,38 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "resource_changes": [
+    {
+      "address": "aws_instance.demo",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "demo",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "ami": "ami-synthetic",
+          "instance_type": "t3.small",
+          "tags": {
+            "env": "dev",
+            "owner": "synthetic-team",
+            "purpose": "demo"
+          }
+        },
+        "after": {
+          "ami": "ami-synthetic",
+          "instance_type": "t3.small",
+          "tags": {
+            "env": "dev",
+            "owner": "synthetic-team",
+            "purpose": "demo-updated"
+          }
+        },
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": {}
+      }
+    }
+  ]
+}
