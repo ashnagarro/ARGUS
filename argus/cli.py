@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from .corpus import load_corpus, read_section, search_corpus
 from .corpus_fetch import fetch_corpus
-from .models import AIFinding
+from .models import AIFinding, RuleFinding
 from .parse_plan import parse_plan
 from .permissions import decide_permission, load_policy
 from .report import Report, render_terminal, write_reports
@@ -81,6 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("all", "act1", "act2", "act3", "act5"),
         help="Scenario to run.",
     )
+    demo_mode = demo.add_mutually_exclusive_group()
+    demo_mode.add_argument("--offline", action="store_true", help="Replay cached Scholar answers (default).")
+    demo_mode.add_argument("--live", action="store_true", help="Call Scholar for research scenarios.")
 
     corpus = commands.add_parser("corpus", help="Manage reference documents.")
     corpus_commands = corpus.add_subparsers(dest="corpus_command", required=True)
@@ -406,6 +409,75 @@ def run_check(
     return 0
 
 
+def run_demo(scenario: str = "all", *, live: bool = False) -> int:
+    """Show the four planned scenarios with an offline replay by default."""
+    scenarios = ("act1", "act2", "act3", "act5") if scenario == "all" else (scenario,)
+    plans = PROJECT_ROOT / "fixtures" / "plans"
+    for name in scenarios:
+        print(f"\n=== {name.upper()} ===")
+        if name == "act1":
+            code = run_check(plans / "act1_replace_pii_db.json")
+            if code != 1:
+                print("Ask you: act1 did not produce the expected NO-GO verdict.")
+                return 2
+        elif name == "act2":
+            code = run_check(
+                plans / "act2_major_upgrade.json",
+                scholar_mode="live" if live else "offline",
+                disabled_rules=("R007",),
+            )
+            if code == 2:
+                return 2
+            record = json.loads((PROJECT_ROOT / ".cache" / "last_run.json").read_text(encoding="utf-8"))
+            if not record["ai_findings"]:
+                print("Ask you: act2 has no Scholar finding to demonstrate.")
+                return 2
+        elif name == "act3":
+            plan = plans / "act3_major_upgrade_second.json"
+            if live:
+                before_code = run_check(plan, scholar_mode="live", disabled_rules=("R007",))
+                if before_code == 2:
+                    return 2
+            baseline = _baseline()
+            if not baseline:
+                print("Ask you: record act3 with --live --disable-rule R007 first.")
+                return 2
+            code = run_check(plan)
+            if code != 1:
+                print("Ask you: act3 did not produce the expected R007 NO-GO verdict.")
+                return 2
+            record = json.loads((PROJECT_ROOT / ".cache" / "last_run.json").read_text(encoding="utf-8"))
+            if not any(item["rule_id"] == "R007" for item in record["rule_findings"]):
+                print("Ask you: R007 did not catch act3.")
+                return 2
+            print(_comparison(baseline))
+        elif name == "act5":
+            code = run_check(
+                plans / "act5_agent_landing_zone.json", author="agent:landing-zone",
+                changed_files=("argus/rules/r007.py",),
+            )
+            if code != 1:
+                print("Ask you: Warden did not block the out-of-scope agent file.")
+                return 2
+            record = json.loads((PROJECT_ROOT / ".cache" / "last_run.json").read_text(encoding="utf-8"))
+            warden = next((RuleFinding(**item) for item in record["rule_findings"]
+                           if item["rule_id"] == "W001"), None)
+            if warden is None:
+                print("Ask you: Warden finding W001 is missing.")
+                return 2
+            today = datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
+            exception = ({
+                "rule_id": "W001", "resource": warden.resource,
+                "owner": "synthetic-team", "reason": "demo approval",
+                "ticket": "DEMO-1", "expires": (today + timedelta(days=1)).isoformat(),
+            },)
+            active = apply_exceptions((warden,), exception, today)[0]
+            expired = apply_exceptions((warden,), exception, today + timedelta(days=2))[0]
+            print(f"Active exception: {'WAIVED' if active.waived else 'NO-GO'} until {exception[0]['expires']}")
+            print(f"Expired exception: {'NO-GO' if not expired.waived else 'WAIVED'} — {expired.message}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Dispatch an ARGUS command."""
     parser = build_parser()
@@ -426,21 +498,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"argus compile: {error}", file=sys.stderr)
             return 2
-    if args.command == "demo" and args.scenario == "act3":
-        baseline = _baseline()
-        if not baseline:
-            print("Ask you: record act3 with --live --disable-rule R007 first.")
+    if args.command == "demo":
+        try:
+            return run_demo(args.scenario or "all", live=args.live)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"argus demo: {error}", file=sys.stderr)
             return 2
-        plan = PROJECT_ROOT / "fixtures" / "plans" / "act3_major_upgrade_second.json"
-        result = run_check(plan)
-        if result not in (0, 1):
-            return result
-        record = json.loads((PROJECT_ROOT / ".cache" / "last_run.json").read_text(encoding="utf-8"))
-        if not any(item["rule_id"] == "R007" for item in record["rule_findings"]):
-            print("Ask you: R007 did not catch act3.")
-            return 2
-        print(_comparison(baseline))
-        return 0
     if args.command == "corpus" and args.corpus_command == "fetch":
         try:
             results = fetch_corpus(args.sources, args.output_dir)
