@@ -1,7 +1,7 @@
 === CONTEXT ===
 Event: Codex hackathon. Code freeze Saturday 11:00. Live demo Saturday 13:00.
-Machine: Windows 11, PowerShell, VS Code, Python 3.12. No Makefile, no bash scripts.
-Run commands as: python -m pytest -q   and   python -m argus <command>
+Machine: Windows 11, PowerShell, VS Code, Python 3.12 or newer (this machine runs 3.14). No Makefile, no bash scripts.
+Run commands as: .venv\Scripts\python -m pytest -q   and   .venv\Scripts\python -m argus <command>
 The Codex CLI is installed and logged in; ARGUS calls it at runtime with `codex exec`.
 Run `codex exec --help` once to confirm exact flag names before using them.
 
@@ -19,6 +19,7 @@ it decides GO / GO-WITH-CONDITIONS / NO-GO with evidence. Three principles:
 === HARD RULES (never break) ===
 - Python standard library plus pytest and jsonschema only. No web frameworks, databases,
   vector stores or agent frameworks.
+- Always run Python as .venv\Scripts\python (for example: .venv\Scripts\python -m pytest -q).
 - All test data is fake. Never use real customer data, real names or real AWS account IDs.
 - Never invent numbers, prices, quotes or documentation text. If data is missing, say so.
 - Every rule is one file in argus/rules/ with its own test file in tests/rules/
@@ -31,7 +32,8 @@ it decides GO / GO-WITH-CONDITIONS / NO-GO with evidence. Three principles:
 - Every real AI answer is cached in .cache/ by a hash of its input, so the demo can replay
   offline with `--offline`.
 - Optional features sit behind flags in argus.toml and switch off cleanly if they fail.
-- Run python -m pytest -q before saying any phase is done. Never report done with failing tests.
+- Run .venv\Scripts\python -m pytest -q before saying any phase is done. Never report done with failing tests.
+- pytest exit code 5 (no tests collected) is expected until Phase 1.
 
 === WORKING PROTOCOL ===
 - Work on ONE phase at a time. At the end of each phase:
