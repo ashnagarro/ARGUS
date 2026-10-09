@@ -60,3 +60,10 @@ def test_demo_all_has_stable_verdicts_and_cached_comparison(
         assert "Warden blocked agent:landing-zone: argus/rules/r007.py is outside" in output
         assert "Active exception: WAIVED" in output
         assert "Expired exception: NO-GO" in output
+
+    assert cli.main(["demo", "--present"]) == 0
+    presentation = (tmp_path / "reports" / "presentation.html").read_text(encoding="utf-8")
+    assert presentation.count("<section>") == 4
+    assert "13 AI calls / 42.51 s -&gt; 0 AI calls / 0.00 s" in presentation
+    assert "Agent landing-zone changed argus/rules/r007.py outside its approved scope" in presentation
+    assert "<style>" in presentation and "<script src=" not in presentation

@@ -5,6 +5,9 @@ backup/
 .codex-home/
 reports/latest.md
 reports/latest.html
+reports/presentation.html
+reports/console.html
+dist/
 ledger/traces/
 ledger/runs/
 ledger/ledger.jsonl

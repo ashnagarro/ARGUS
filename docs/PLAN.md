@@ -192,6 +192,16 @@ Done when: running demo all 3 times gives identical verdicts.
 - The demo act3 summary says "AI advice (act2) -> learned, enforced rule (act3):
   13 AI calls / 42.51 s -> 0 AI calls / 0.00 s", using the cached before values.
 
+=== PHASE 9C: Presentation and package ===
+- `python -m argus demo --present` runs the offline demo and writes a self-contained,
+  projector-readable `reports/presentation.html` with the four scenario verdicts and the
+  learned-rule before/after comparison.
+- BUILD_LOG.md records the implemented phases, decisions, and verified test results.
+- README.md explains setup, configuration, offline and live commands, compile approval,
+  run history, and the demo.
+- `scripts/package.ps1` packages committed project files into `dist/argus-demo.zip` using
+  `git archive HEAD`; it excludes ignored credentials, caches, virtual environments, and ledgers.
+
 === OPTIONAL PHASES (only when I ask) ===
 10 Policy from English: python -m argus policy "<sentence>" compiles a plain-English policy into
    a rule + tests using the Phase 7 method. Flag policy_compiler.

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+from html import escape
 import json
 from pathlib import Path
 import re
@@ -84,6 +85,8 @@ def build_parser() -> argparse.ArgumentParser:
     demo_mode = demo.add_mutually_exclusive_group()
     demo_mode.add_argument("--offline", action="store_true", help="Replay cached Scholar answers (default).")
     demo_mode.add_argument("--live", action="store_true", help="Call Scholar for research scenarios.")
+    demo.add_argument("--present", action="store_true",
+                      help="Write an offline projector view to reports/presentation.html.")
 
     corpus = commands.add_parser("corpus", help="Manage reference documents.")
     corpus_commands = corpus.add_subparsers(dest="corpus_command", required=True)
@@ -410,10 +413,38 @@ def run_check(
     return 0
 
 
-def run_demo(scenario: str = "all", *, live: bool = False) -> int:
+def _presentation_html(cards: list[tuple[str, str, str]]) -> str:
+    blocks = []
+    for name, verdict, detail in cards:
+        badge = {"NO-GO": "no-go", "GO-WITH-CONDITIONS": "conditions",
+                 "GO": "go"}.get(verdict, "needs-human")
+        blocks.append(
+            f'<section><h2>{escape(name.upper())}</h2>'
+            f'<p class="badge {badge}">{escape(verdict)}</p>'
+            f'<p>{escape(detail)}</p></section>'
+        )
+    return (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<title>ARGUS presentation</title><style>'
+        'body{font:26px/1.4 system-ui,sans-serif;background:#101820;color:#f7fafc;'
+        'max-width:1400px;margin:0 auto;padding:2rem}'
+        'h1{font-size:3.2rem}h2{font-size:2.4rem;margin:.1rem 0}'
+        'main{display:grid;grid-template-columns:repeat(auto-fit,minmax(500px,1fr));gap:1.2rem}'
+        'section{background:#1e2c38;border:2px solid #6d8799;border-radius:1rem;padding:1.5rem}'
+        '.badge{font-size:2rem;font-weight:800;padding:.4rem .8rem;border-radius:.4rem;display:inline-block}'
+        '.no-go{background:#a11825}.conditions{background:#9a5a00}.go{background:#176833}'
+        '.needs-human{background:#70479a}</style></head><body>'
+        '<h1>ARGUS — evidence-backed Terraform safety gate</h1><main>'
+        + ''.join(blocks) + '</main></body></html>\n'
+    )
+
+
+def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False) -> int:
     """Show the four planned scenarios with an offline replay by default."""
     scenarios = ("act1", "act2", "act3", "act5") if scenario == "all" else (scenario,)
     plans = PROJECT_ROOT / "fixtures" / "plans"
+    cards: list[tuple[str, str, str]] = []
     for name in scenarios:
         print(f"\n=== {name.upper()} ===")
         if name == "act1":
@@ -421,6 +452,7 @@ def run_demo(scenario: str = "all", *, live: bool = False) -> int:
             if code != 1:
                 print("Ask you: act1 did not produce the expected NO-GO verdict.")
                 return 2
+            cards.append((name, "NO-GO", "A stateful production database replacement is blocked by a deterministic rule."))
         elif name == "act2":
             code = run_check(
                 plans / "act2_major_upgrade.json",
@@ -433,6 +465,8 @@ def run_demo(scenario: str = "all", *, live: bool = False) -> int:
             if not record["ai_findings"]:
                 print("Ask you: act2 has no Scholar finding to demonstrate.")
                 return 2
+            cards.append((name, record["verdict"],
+                          "Scholar's evidence-backed finding is advisory until a human approves a tested rule."))
         elif name == "act3":
             plan = plans / "act3_major_upgrade_second.json"
             if live:
@@ -452,6 +486,7 @@ def run_demo(scenario: str = "all", *, live: bool = False) -> int:
                 print("Ask you: R007 did not catch act3.")
                 return 2
             print(_comparison(baseline))
+            cards.append((name, record["verdict"], _comparison(baseline)))
         elif name == "act5":
             code = run_check(
                 plans / "act5_agent_landing_zone.json", author="agent:landing-zone",
@@ -478,6 +513,14 @@ def run_demo(scenario: str = "all", *, live: bool = False) -> int:
             expired = apply_exceptions((warden,), exception, today + timedelta(days=2))[0]
             print(f"Active exception: {'WAIVED' if active.waived else 'NO-GO'} until {exception[0]['expires']}")
             print(f"Expired exception: {'NO-GO' if not expired.waived else 'WAIVED'} — {expired.message}")
+            cards.append((name, record["verdict"],
+                          "Agent landing-zone changed argus/rules/r007.py outside its approved scope; "
+                          "an expired exception blocks it again."))
+    if present:
+        path = PROJECT_ROOT / "reports" / "presentation.html"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_presentation_html(cards), encoding="utf-8")
+        print(f"Presentation: {path}")
     return 0
 
 
@@ -503,7 +546,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
     if args.command == "demo":
         try:
-            return run_demo(args.scenario or "all", live=args.live)
+            return run_demo(args.scenario or "all", live=args.live,
+                            present=args.present)
         except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"argus demo: {error}", file=sys.stderr)
             return 2
