@@ -184,6 +184,13 @@ Done when: running demo all 3 times gives identical verdicts.
   readable in a projector at the back of a room. Timestamps in local time (Asia/Kolkata).
 - Hide empty sections ("None.") in the HTML report except Ask you.
 - Scholar stops as soon as it has a verified final answer.
+- When a learned rule compiled by Smith fires, its finding says
+  "Learned rule R007 - compiled from AI finding F1, human-approved on <date> - now ENFORCED"
+  (with the actual rule ID, source finding ID, and approval date).
+- The act2 report says "AI findings are advisory; once human-approved and compiled into a
+  tested rule they become enforced."
+- The demo act3 summary says "AI advice (act2) -> learned, enforced rule (act3):
+  13 AI calls / 42.51 s -> 0 AI calls / 0.00 s", using the cached before values.
 
 === OPTIONAL PHASES (only when I ask) ===
 10 Policy from English: python -m argus policy "<sentence>" compiles a plain-English policy into
