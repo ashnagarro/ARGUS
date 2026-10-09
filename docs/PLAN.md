@@ -171,6 +171,18 @@ act5: agent change blocked by Warden, then the expired exception re-blocks.
 Default --offline using cached answers; --live calls AI. Clear headers in the output.
 Done when: running demo all 3 times gives identical verdicts.
 
+=== PHASE 9B: Report polish ===
+- Every rule declares: why_it_matters (one sentence) and how_to_fix (concrete Terraform advice).
+  Example for R001: why = "Replacing a database deletes it and its data, then creates an empty
+  one"; fix = "Keep the original identifier; if a rename is required, plan a snapshot-and-restore
+  migration; add lifecycle { prevent_destroy = true } to stateful resources."
+- Each finding shows the resource's key tags (env, data_classification, owner) when present,
+  and adds a headline such as "Production database holding PII will be deleted and recreated".
+- Conditions to merge use how_to_fix text, not "Resolve R001".
+- HTML report: large coloured verdict banner (red NO-GO, amber GO-WITH-CONDITIONS, green GO),
+  readable in a projector at the back of a room. Timestamps in local time (Asia/Kolkata).
+- Hide empty sections ("None.") in the HTML report except Ask you.
+
 === OPTIONAL PHASES (only when I ask) ===
 10 Policy from English: python -m argus policy "<sentence>" compiles a plain-English policy into
    a rule + tests using the Phase 7 method. Flag policy_compiler.
