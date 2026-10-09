@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 from time import perf_counter
 
+from .corpus_fetch import fetch_corpus
 from .parse_plan import parse_plan
 from .report import Report, render_terminal, write_reports
 from .rules import run_rules
@@ -39,6 +40,18 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         choices=("all", "act1", "act2", "act3", "act5"),
         help="Scenario to run.",
+    )
+
+    corpus = commands.add_parser("corpus", help="Manage reference documents.")
+    corpus_commands = corpus.add_subparsers(dest="corpus_command", required=True)
+    fetch = corpus_commands.add_parser("fetch", help="Fetch public reference documents.")
+    fetch.add_argument(
+        "--sources", type=Path, default=Path("corpus/sources.yaml"),
+        help="Source manifest (default: corpus/sources.yaml).",
+    )
+    fetch.add_argument(
+        "--output-dir", type=Path, default=Path("corpus"),
+        help="Output directory (default: corpus).",
     )
     return parser
 
@@ -73,5 +86,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         except (OSError, ValueError) as error:
             print(f"argus check: {error}", file=sys.stderr)
             return 2
+    if args.command == "corpus" and args.corpus_command == "fetch":
+        try:
+            results = fetch_corpus(args.sources, args.output_dir)
+        except (OSError, ValueError) as error:
+            print(f"argus corpus fetch: {error}", file=sys.stderr)
+            return 2
+        for result in results:
+            if result.status == "ok":
+                print(f"OK {result.doc_id}: {result.size} bytes -> {result.path}")
+            else:
+                print(f"FAILED {result.doc_id}: {result.error}", file=sys.stderr)
+        return 0 if all(result.status == "ok" for result in results) else 1
     print(f"argus {args.command}: not implemented yet", file=sys.stderr)
     return 2

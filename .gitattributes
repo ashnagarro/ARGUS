@@ -1,0 +1,2 @@
+corpus/*.md text eol=lf
+corpus/sources.yaml text eol=lf
