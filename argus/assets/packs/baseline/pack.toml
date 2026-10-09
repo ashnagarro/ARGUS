@@ -1,0 +1,5 @@
+name = "baseline"
+version = "1.0.0"
+owner = "ARGUS maintainers"
+description = "Mandatory deterministic safeguards for infrastructure changes."
+rule_ids = ["R001", "R002", "R003", "R004", "R005", "R006", "R007", "W001"]

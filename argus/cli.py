@@ -26,8 +26,21 @@ from .verify import verify_quote
 from .warden import apply_exceptions, check_agent_files, load_agents, load_exceptions
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+CALLER_ROOT = Path.cwd().resolve()
+# A configured team directory wins even when ARGUS is imported from its source
+# checkout. An unconfigured MCP launch in examples/agent-demo still uses the
+# source project, while a wheel installed from Git uses the caller's directory.
+PROJECT_ROOT = (CALLER_ROOT if (CALLER_ROOT / "argus.toml").is_file()
+                or (CALLER_ROOT / ".argus" / "team.toml").is_file()
+                else PACKAGE_ROOT if (PACKAGE_ROOT / ".git").is_dir() else CALLER_ROOT)
 _RUN_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _asset_path(relative: str) -> Path:
+    """Use a team's file when present, otherwise the wheel's read-only default."""
+    project_path = PROJECT_ROOT / relative
+    return project_path if project_path.is_file() else Path(__file__).parent / "assets" / relative
 
 
 def _counted(count: int, singular: str) -> str:
@@ -89,6 +102,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     policy_command.add_argument("sentence", help="One precise policy sentence.")
 
+    commands.add_parser("init", help="Create a team overlay in the working directory.")
+    promote = commands.add_parser("promote", help="Copy a reviewed team rule into aws-core.")
+    promote.add_argument("rule_id", help="ID of a tested team rule.")
+
     demo = commands.add_parser("demo", help="Run a demonstration scenario.")
     demo.add_argument(
         "scenario",
@@ -145,7 +162,7 @@ def run_tool(command: str, args: argparse.Namespace) -> int:
     run_id = uuid4().hex
     decision = decide_permission(
         command.replace("-", "_"), "", is_write=False,
-        policy=load_policy(PROJECT_ROOT / "permissions.yaml"),
+        policy=load_policy(_asset_path("permissions.yaml")),
     )
     _append_trace(run_id, {
         "event": "permission_decision", "tool": command,
@@ -331,6 +348,7 @@ def run_check(
     approver: str | None = None,
     tf_files: Sequence[Path] = (),
     governance_enabled: bool | None = None,
+    team_enabled: bool | None = None,
     write_artifacts: bool = True,
     emit_output: bool = True,
     check_agent_scope: bool = True,
@@ -344,13 +362,35 @@ def run_check(
         raise ValueError("invalid run ID")
     settings = _settings()
     flags = settings.get("flags", {})
-    include_governance = (isinstance(flags, dict) and flags.get("governance_pack") is True
+    if not isinstance(flags, dict):
+        raise ValueError("[flags] must be a table")
+    include_governance = (flags.get("governance_pack") is True
                           if governance_enabled is None else governance_enabled)
-    resolved = [(reference, resolve_rule_id(reference)) for reference in disabled_rules]
+    include_team = (flags.get("team_overlays") is True if team_enabled is None else team_enabled)
+    team_policy = None
+    extra_rules = ()
+    enabled_rule_ids = None
+    if include_team:
+        from .team import load_extra_rules, load_team_policy
+
+        team_policy = load_team_policy(PROJECT_ROOT, settings)
+        if governance_enabled is None and "governance" in team_policy.enabled_packs:
+            include_governance = True
+        builtin_ids = {rule.id for rule in load_rules(include_governance=include_governance)}
+        extra_rules = load_extra_rules(team_policy, existing_rule_ids=builtin_ids)
+        enabled_rule_ids = set(team_policy.active_rule_ids) | {rule.id for rule in extra_rules}
+    extra_ids = {rule.id for rule in extra_rules}
+    resolved = [(reference, resolve_rule_id(reference)
+                 or (reference.upper() if reference.upper() in extra_ids else None))
+                for reference in disabled_rules]
     unknown = {reference for reference, rule_id in resolved if rule_id is None}
     if unknown:
         raise ValueError(f"unknown rule ID or name: {', '.join(sorted(unknown))}")
     disabled_rule_ids = tuple(dict.fromkeys(rule_id for _, rule_id in resolved if rule_id))
+    effective_disabled = disabled_rule_ids
+    if team_policy is not None:
+        effective_disabled = tuple(rule_id for rule_id in disabled_rule_ids
+                                   if rule_id not in team_policy.mandatory_rule_ids)
     _append_trace(run_id, {"event": "run_start", "mode": scholar_mode or "rules",
                            "disabled_rules": list(disabled_rule_ids)})
     changes = parse_plan(plan)
@@ -358,7 +398,7 @@ def run_check(
         raise ValueError("--changed-files is required for an agent author")
     if changed_files and not author.startswith("agent:"):
         raise ValueError("--changed-files requires --author agent:<name>")
-    policy = load_policy(PROJECT_ROOT / "permissions.yaml")
+    policy = load_policy(_asset_path("permissions.yaml"))
     permission_asks: list[str] = []
     for change in changes:
         decision = decide_permission("get_change", change.resource_type,
@@ -376,29 +416,45 @@ def run_check(
         permission_asks.append(f"Human approval required for agent change to {file}.")
     if include_governance:
         from .governance import context_from_settings
+        from .team import governance_settings
 
         source_files = tuple(dict.fromkeys((*(Path(plan).parent.glob("*.tf")), *tf_files)))
         context = context_from_settings(
-            settings, ticket=ticket,
+            governance_settings(settings, team_policy) if team_policy else settings,
+            ticket=ticket,
             # A read-only MCP review is performed by an agent, but the plan's
             # change author is unknown. Do not treat the reviewer as its author.
             author=author if check_agent_scope else "unknown", approver=approver,
             tf_files=source_files, ledger_recorded=True,
         )
         rule_findings = tuple(run_rules(
-            changes, disabled_rule_ids=disabled_rule_ids, include_governance=True,
-            governance_context=context, controls_path=PROJECT_ROOT / "controls.yaml",
+            changes, disabled_rule_ids=effective_disabled, include_governance=True,
+            governance_context=context, controls_path=_asset_path("controls.yaml"),
+            enabled_rule_ids=enabled_rule_ids, extra_rules=extra_rules,
         ))
     else:
-        rule_findings = tuple(
-            run_rules(changes, disabled_rule_ids=disabled_rule_ids)
-            if disabled_rule_ids else run_rules(changes)
+        if team_policy is None:
+            rule_findings = tuple(run_rules(changes, disabled_rule_ids=effective_disabled)
+                                  if effective_disabled else run_rules(changes))
+        else:
+            rule_findings = tuple(run_rules(
+                changes, disabled_rule_ids=effective_disabled,
+                enabled_rule_ids=enabled_rule_ids, extra_rules=extra_rules,
+            ))
+    if team_policy is not None:
+        from .team import baseline_disable_findings, owner_findings, raise_findings
+
+        rule_findings = raise_findings(
+            (*rule_findings, *owner_findings(changes, team_policy),
+             *team_policy.findings,
+             *baseline_disable_findings(team_policy, disabled_rule_ids)),
+            team_policy,
         )
     if author.startswith("agent:") and check_agent_scope:
         agents = load_agents(PROJECT_ROOT / "agents.yaml")
-        if "W001" not in disabled_rule_ids:
+        if "W001" not in effective_disabled:
             rule_findings += check_agent_files(author, changed_files, agents)
-    exceptions_path = PROJECT_ROOT / "exceptions.yaml"
+    exceptions_path = _asset_path("exceptions.yaml")
     exceptions = load_exceptions(exceptions_path)
     rule_findings = apply_exceptions(
         rule_findings, exceptions,
@@ -432,8 +488,8 @@ def run_check(
                 model=model, live=scholar_mode == "live", run_id=run_id,
                 cache_dir=PROJECT_ROOT / ".cache" / "scholar",
                 trace_dir=PROJECT_ROOT / "ledger" / "traces",
-                permissions_path=PROJECT_ROOT / "permissions.yaml",
-                schema_path=PROJECT_ROOT / "schemas" / "finding.schema.json",
+                permissions_path=_asset_path("permissions.yaml"),
+                schema_path=_asset_path("schemas/finding.schema.json"),
                 cache_live_responses=write_artifacts,
             )
         except Exception as error:
@@ -577,7 +633,8 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
     for name in scenarios:
         print(f"\n=== {name.upper()} ===")
         if name == "act1":
-            code = run_check(plans / "act1_replace_pii_db.json", governance_enabled=False)
+            code = run_check(plans / "act1_replace_pii_db.json", governance_enabled=False,
+                             team_enabled=False)
             if code != 1:
                 print("Ask you: act1 did not produce the expected NO-GO verdict.")
                 return 2
@@ -588,6 +645,7 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
                 scholar_mode="live" if live else "offline",
                 disabled_rules=("R007",),
                 governance_enabled=False,
+                team_enabled=False,
             )
             if code == 2:
                 return 2
@@ -601,14 +659,14 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
             plan = plans / "act3_major_upgrade_second.json"
             if live:
                 before_code = run_check(plan, scholar_mode="live", disabled_rules=("R007",),
-                                        governance_enabled=False)
+                                        governance_enabled=False, team_enabled=False)
                 if before_code == 2:
                     return 2
             baseline = _baseline()
             if not baseline:
                 print("Ask you: record act3 with --live --disable-rule R007 first.")
                 return 2
-            code = run_check(plan, governance_enabled=False)
+            code = run_check(plan, governance_enabled=False, team_enabled=False)
             if code != 1:
                 print("Ask you: act3 did not produce the expected R007 NO-GO verdict.")
                 return 2
@@ -623,6 +681,7 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
                 plans / "act5_agent_landing_zone.json", author="agent:landing-zone",
                 changed_files=("argus/rules/r007.py",),
                 governance_enabled=False,
+                team_enabled=False,
             )
             if code != 1:
                 print("Ask you: Warden did not block the out-of-scope agent file.")
@@ -684,6 +743,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_policy(args.sentence)
         except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"argus policy: {error}", file=sys.stderr)
+            return 2
+    if args.command == "init":
+        try:
+            from .team import init_team
+
+            path = init_team(Path.cwd())
+            print(f"Team overlay: {path}")
+            print("Enable [flags] team_overlays = true in argus.toml to apply it.")
+            return 0
+        except (OSError, ValueError) as error:
+            print(f"argus init: {error}", file=sys.stderr)
+            return 2
+    if args.command == "promote":
+        try:
+            from .team import promote_rule
+
+            flags = _settings().get("flags", {})
+            if not isinstance(flags, dict) or flags.get("team_overlays") is not True:
+                raise ValueError("enable [flags] team_overlays = true in argus.toml")
+            rule, test = promote_rule(PROJECT_ROOT, args.rule_id)
+            print(f"Copied {args.rule_id} for promotion review: {rule} and {test}")
+            print("Review checklist: verify policy owner and scope; inspect both tests; "
+                  "run the full suite; obtain human approval before rollout.")
+            return 0
+        except (OSError, ValueError) as error:
+            print(f"argus promote: {error}", file=sys.stderr)
             return 2
     if args.command == "demo":
         try:

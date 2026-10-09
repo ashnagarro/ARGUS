@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "resource": {"type": "string"},
+          "change_type": {"type": "string"},
+          "claim": {"type": "string"},
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "doc_id": {"type": "string"},
+                "quote": {"type": "string"}
+              },
+              "required": ["doc_id", "quote"],
+              "additionalProperties": false
+            }
+          },
+          "severity": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+          "recommended_action": {"type": "string"},
+          "confidence": {"type": "string", "enum": ["low", "medium", "high"]}
+        },
+        "required": ["id", "resource", "change_type", "claim", "evidence", "severity", "recommended_action", "confidence"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["findings"],
+  "additionalProperties": false
+}

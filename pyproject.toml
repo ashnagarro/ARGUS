@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "argus-infra-gate"
+version = "0.1.0"
+description = "Evidence-backed infrastructure change safety gate"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "jsonschema",
+  "beautifulsoup4",
+  "openai",
+  "mcp>=2,<3",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+argus = "argus.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["argus*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+argus = ["assets/*.yaml", "assets/schemas/*.json", "assets/packs/*/pack.toml", "assets/packs/*/rules/*.py"]

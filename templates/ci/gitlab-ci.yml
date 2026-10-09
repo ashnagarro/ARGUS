@@ -1,0 +1,13 @@
+image: python:3.12
+
+stages:
+  - review
+
+argus-check:
+  stage: review
+  variables:
+    # Set ARGUS_GIT_SOURCE as a protected CI variable with a reviewed commit ref.
+    ARGUS_PLAN: plan.json
+  script:
+    - python -m pip install "$ARGUS_GIT_SOURCE"
+    - argus check "$ARGUS_PLAN"

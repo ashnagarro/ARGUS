@@ -1,0 +1,5 @@
+name = "aws-core"
+version = "1.0.0"
+owner = "ARGUS maintainers"
+description = "Reviewed AWS rules promoted from team learning."
+rule_ids = []

@@ -1,0 +1,20 @@
+name: ARGUS plan review
+on: [pull_request]
+
+jobs:
+  argus-check:
+    runs-on: ubuntu-latest
+    env:
+      # Set this repository variable to a reviewed Git URL and commit ref.
+      ARGUS_GIT_SOURCE: ${{ vars.ARGUS_GIT_SOURCE }}
+      # A previous Terraform job or step must generate this plan JSON.
+      ARGUS_PLAN: plan.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ARGUS
+        run: python -m pip install "$ARGUS_GIT_SOURCE"
+      - name: Review Terraform plan
+        run: argus check "$ARGUS_PLAN"

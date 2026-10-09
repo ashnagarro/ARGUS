@@ -60,6 +60,12 @@ The `governance_pack` flag enables G01–G26 and G28–G29 for normal checks. Ea
 
 Use `--ticket` for a production change, `--approver` to record a distinct human reviewer, and repeat `--tf-file` for Terraform files that need a literal-secret scan. The canonical four-act `argus demo all` stays on its baseline rules; `argus check fixtures\plans\act6_governance_sweep.json --ticket SYNTH-1` exercises the governance pack with synthetic violations.
 
+## Team portability
+
+The Git package exposes an `argus` command. In a team infrastructure repository, run `argus init`, set `[flags] team_overlays = true` in `argus.toml`, then edit `.argus/team.toml`. ARGUS always evaluates the baseline pack and layers approved regions, required tags, owners, enabled packs, and extra rules on top. Team settings cannot disable or lower an organization-mandated rule; an attempted relaxation produces a critical configuration finding. `argus promote RULE_ID` copies a reviewed team rule and its test into the AWS core pack and prints the review checklist.
+
+[The five-minute adoption guide](docs/ADOPTION.md) includes Git installation and CI templates. The synthetic [analytics](examples/team-analytics/README.md) and [payments](examples/team-payments/README.md) teams review the same plan with different results.
+
 ## Codex MCP plugin
 
 Register the local MCP server using [docs/CODEX_PLUGIN.md](docs/CODEX_PLUGIN.md). Its two tools check project-local plan JSON and explain saved findings. MCP calls write only ledger records. The synthetic Terraform workflow is in [examples/agent-demo](examples/agent-demo/AGENTS.md).

@@ -1,0 +1,21 @@
+trigger:
+  - main
+pr:
+  - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  # Set ARGUS_GIT_SOURCE in the pipeline to a reviewed Git URL and commit ref.
+  ARGUS_PLAN: plan.json
+
+steps:
+  - checkout: self
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.12'
+  - script: python -m pip install "$(ARGUS_GIT_SOURCE)"
+    displayName: Install ARGUS
+  - script: argus check "$(ARGUS_PLAN)"
+    displayName: Review Terraform plan

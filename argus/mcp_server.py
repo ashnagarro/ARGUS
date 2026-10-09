@@ -18,7 +18,7 @@ from .rules import load_rules, resolve_rule_id
 from .warden import W001_APPLIES_TO, W001_ID, W001_NAME, W001_TITLE
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = cli.PROJECT_ROOT
 mcp = MCPServer("ARGUS", description="Evidence-backed infrastructure plan safety gate")
 READ_ONLY_ANNOTATIONS = ToolAnnotations(
     readOnlyHint=True,

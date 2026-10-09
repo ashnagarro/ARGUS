@@ -1,0 +1,5 @@
+# Default synthetic analytics team overlay for the same clean_change.json plan.
+approved_regions = []
+required_tags = ["env", "owner"]
+owners = ["synthetic-team"]
+enabled_packs = ["aws-core", "governance"]

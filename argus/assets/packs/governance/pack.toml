@@ -1,0 +1,5 @@
+name = "governance"
+version = "1.0.0"
+owner = "ARGUS maintainers"
+description = "Optional organization governance checks."
+rule_ids = ["G01", "G02", "G03", "G04", "G05", "G06", "G07", "G08", "G09", "G10", "G11", "G12", "G13", "G14", "G15", "G16", "G17", "G18", "G19", "G20", "G21", "G22", "G23", "G24", "G25", "G26", "G28", "G29"]

@@ -106,13 +106,22 @@ def run_rules(
     include_governance: bool = False,
     governance_context: GovernanceContext | None = None,
     controls_path: Path | None = None,
+    enabled_rule_ids: Collection[str] | None = None,
+    extra_rules: Sequence[Rule] = (),
 ) -> list[RuleFinding]:
     """Apply all loaded rules to normalized changes."""
     all_changes = tuple(changes)
     context = governance_context or GovernanceContext()
     findings: list[RuleFinding] = []
-    for rule in load_rules(include_governance=include_governance, controls_path=controls_path):
+    rules = load_rules(include_governance=include_governance, controls_path=controls_path)
+    rules.extend(extra_rules)
+    ids = [rule.id for rule in rules]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Duplicate deterministic rule ID")
+    for rule in rules:
         if rule.id in disabled_rule_ids or rule.name in disabled_rule_ids:
+            continue
+        if enabled_rule_ids is not None and rule.id not in enabled_rule_ids:
             continue
         if rule.id == "G17":
             rule.minimum_retention_days = context.minimum_retention_days
