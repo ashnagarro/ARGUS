@@ -94,6 +94,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     console = commands.add_parser("console", help="Build the offline ARGUS Console HTML page.")
     console.add_argument("--open", action="store_true", help="Open the generated page in a browser.")
+    console_scope = console.add_mutually_exclusive_group()
+    console_scope.add_argument("--session", choices=("latest",), default="latest",
+                               help="Show runs since the last archive (default: latest).")
+    console_scope.add_argument("--all", action="store_true",
+                               help="Include runs from every archived session.")
+
+    ledger = commands.add_parser("ledger", help="Manage local run history.")
+    ledger_commands = ledger.add_subparsers(dest="ledger_command", required=True)
+    ledger_commands.add_parser("archive", help="Archive current ledger, runs, and traces.")
 
     corpus = commands.add_parser("corpus", help="Manage reference documents.")
     corpus_commands = corpus.add_subparsers(dest="corpus_command", required=True)
@@ -175,10 +184,16 @@ def _saved_run(finding_id: str, run_id: str | None) -> dict:
     if run_id is not None:
         if not _RUN_ID.fullmatch(run_id):
             raise ValueError("invalid run ID")
-        path = runs_dir / f"{run_id}.json"
-        if not path.is_file():
-            raise ValueError(f"run {run_id} was not found in ledger/runs")
-        return json.loads(path.read_text(encoding="utf-8"))
+        paths = [runs_dir / f"{run_id}.json"]
+        archive_root = PROJECT_ROOT / "ledger" / "archive"
+        if archive_root.is_dir():
+            paths.extend(archive / "runs" / f"{run_id}.json"
+                         for archive in sorted(archive_root.iterdir(), reverse=True)
+                         if archive.is_dir() and not archive.is_symlink())
+        for path in paths:
+            if path.is_file():
+                return json.loads(path.read_text(encoding="utf-8"))
+        raise ValueError(f"run {run_id} was not found in current or archived runs")
     if runs_dir.is_dir():
         for path in sorted(runs_dir.glob("*.json"),
                            key=lambda item: item.stat().st_mtime_ns, reverse=True):
@@ -325,6 +340,10 @@ def run_check(
         trace_steps += (f"checked {_counted(len(changed_files), 'agent file')} against allowed scope",)
     ask_you: tuple[str, ...] = ()
     scholar_status = "not_run"
+    replayed_from_run_id: str | None = None
+    original_ai_calls: int | None = None
+    original_elapsed_seconds: float | None = None
+    cache_paths: tuple[Path, ...] = ()
     if scholar_mode is not None:
         from .scholar import ScholarModelUnavailable, research_changes
 
@@ -358,6 +377,10 @@ def run_check(
             trace_steps += tuple(result.trace_steps)
             ask_you = tuple(result.ask_you)
             scholar_status = result.status
+            replayed_from_run_id = getattr(result, "replayed_from_run_id", None)
+            original_ai_calls = getattr(result, "original_ai_calls", None)
+            original_elapsed_seconds = getattr(result, "original_elapsed_seconds", None)
+            cache_paths = getattr(result, "cache_paths", ())
     # A partial Scholar review cannot authorize a merge, even when the
     # deterministic rules found no problem. Keep the final decision closed.
     scholar_incomplete = scholar_mode is not None and scholar_status != "complete"
@@ -379,6 +402,9 @@ def run_check(
         trace_steps=trace_steps,
         ask_you=ask_you,
         review_status=scholar_status,
+        replayed_from_run_id=replayed_from_run_id,
+        original_ai_calls=original_ai_calls,
+        original_elapsed_seconds=original_elapsed_seconds,
     )
     if write_artifacts:
         write_reports(report, report_dir)
@@ -388,6 +414,10 @@ def run_check(
         "run_at": report.run_at,
         "verdict": verdict, "scholar_status": scholar_status,
         "ai_calls": ai_calls, "elapsed_seconds": report.elapsed_seconds,
+        "scholar_mode": scholar_mode,
+        "replayed_from_run_id": replayed_from_run_id,
+        "original_ai_calls": original_ai_calls,
+        "original_elapsed_seconds": original_elapsed_seconds,
         "disabled_rules": list(disabled_rules),
         "author": author, "changed_files": list(changed_files),
         "rule_findings": [asdict(finding) for finding in rule_findings],
@@ -401,6 +431,10 @@ def run_check(
     runs_dir.mkdir(parents=True, exist_ok=True)
     with (runs_dir / f"{run_id}.json").open("x", encoding="utf-8") as stream:
         stream.write(serialized + "\n")
+    if write_artifacts and scholar_mode == "live" and scholar_status == "complete" and cache_paths:
+        from .scholar import stamp_cache_origin
+
+        stamp_cache_origin(cache_paths, run_id, ai_calls, report.elapsed_seconds)
     if write_artifacts:
         latest.parent.mkdir(parents=True, exist_ok=True)
         latest.write_text(serialized, encoding="utf-8")
@@ -533,7 +567,7 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
             expired = apply_exceptions((warden,), expired_exception, simulated_date)[0]
             print(f"Exception simulation date: {simulated_date.isoformat()}")
             print(f"Active exception: {'WAIVED' if active.waived else 'NO-GO'} until {active_exception[0]['expires']}")
-            print(f"Expired exception: {'NO-GO' if not expired.waived else 'WAIVED'} on {expired_exception[0]['expires']} — {expired.message}")
+            print(f"Expired exception: {'NO-GO' if not expired.waived else 'WAIVED'} on {expired_exception[0]['expires']} - {expired.message}")
             cards.append((name, record["verdict"],
                           "Agent landing-zone changed argus/rules/r007.py outside its approved scope; "
                           "an expired exception blocks it again."))
@@ -576,7 +610,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             from .console import write_console
 
-            output = write_console(PROJECT_ROOT)
+            output = write_console(PROJECT_ROOT, include_archives=args.all)
             print(f"Console: {output}")
             if args.open:
                 import webbrowser
@@ -585,6 +619,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"argus console: {error}", file=sys.stderr)
+            return 2
+    if args.command == "ledger" and args.ledger_command == "archive":
+        try:
+            from .ledger import archive_ledger
+
+            archived = archive_ledger(PROJECT_ROOT)
+            print(f"Archive: {archived}" if archived else "Nothing to archive.")
+            return 0
+        except OSError as error:
+            print(f"argus ledger archive: {error}", file=sys.stderr)
             return 2
     if args.command == "corpus" and args.corpus_command == "fetch":
         try:

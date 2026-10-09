@@ -6,7 +6,7 @@ import pytest
 
 from argus import cli
 from argus.models import AIFinding, RuleFinding
-from argus.report import Report, render_html, render_markdown
+from argus.report import Report, render_html, render_markdown, render_terminal
 from argus.verdict import decide_verdict, merge_conditions
 
 
@@ -79,6 +79,19 @@ def test_reports_group_findings_and_escape_html() -> None:
     assert "Review UNVERIFIED finding" in markdown
     assert "&lt;unsafe&gt;" in html
     assert "<unsafe>" not in html
+
+
+def test_offline_replay_reports_original_live_run_instead_of_bare_zero() -> None:
+    report = Report(
+        verdict="GO-WITH-CONDITIONS", run_at="2026-10-09T00:00:00+00:00",
+        elapsed_seconds=0.15, ai_calls=0, rule_findings=(), ai_findings=(),
+        conditions=(), replayed_from_run_id="synthetic-live",
+        original_ai_calls=4, original_elapsed_seconds=12.34,
+    )
+    expected = "replayed (offline) - original live run: 4 AI calls, 12.34 s"
+    assert expected in render_terminal(report)
+    assert expected in render_markdown(report)
+    assert expected in render_html(report)
 
 
 @pytest.mark.parametrize(

@@ -37,9 +37,12 @@ The offline demo covers stateful replacement, sourced AI advice, an enforced lea
 ```powershell
 .\.venv\Scripts\python -m argus console
 .\.venv\Scripts\python -m argus console --open
+.\.venv\Scripts\python -m argus console --all
 ```
 
-The console writes `reports/console.html` from saved run records, traces, the learned-rule ledger, and the cached act3 baseline. It is one self-contained page with no server or CDN. The generated page shows the run history, evidence, permission timeline, learned rules, and measured before/after values.
+The console writes `reports/console.html` from saved run records, traces, the learned-rule ledger, and the cached act3 baseline. It is one self-contained page with no server or CDN. By default it shows the latest session: runs since the last archive. `--session latest` selects that view explicitly; `--all` includes archived runs and their traces. The page shows evidence, permission timelines, learned rules, and measured before/after values. Offline replays display the original live run's AI calls and elapsed time, with a link to that run when its record is available.
+
+Run `.\.venv\Scripts\python -m argus ledger archive` before a new demo session. It moves the current `ledger.jsonl`, `runs/`, and `traces/` into `ledger/archive/<timestamp>/` without deleting them. The console footer lists archived sessions and shows optional features under “Works now” or “Prototype / roadmap” according to `argus.toml` flags.
 
 ## Codex MCP plugin
 

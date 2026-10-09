@@ -11,3 +11,4 @@ dist/
 ledger/traces/
 ledger/runs/
 ledger/ledger.jsonl
+ledger/archive/

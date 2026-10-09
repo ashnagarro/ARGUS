@@ -110,3 +110,43 @@ def test_from_replays_offline_and_live_act3_baseline_is_cached(
     assert ("AI advice (act2) -> learned, enforced rule (act3): "
             f"4 AI calls / {baseline['elapsed_seconds']:.2f} s "
             "-> 0 AI calls / 0.00 s") in capsys.readouterr().out
+
+
+def test_live_cache_origin_is_saved_and_replay_is_linked(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    _project(tmp_path, monkeypatch)
+    cache_path = tmp_path / ".cache" / "scholar" / "synthetic.json"
+
+    def fake_research(changes, rule_findings, **kwargs):
+        if kwargs["live"]:
+            cache_path.parent.mkdir(parents=True)
+            cache_path.write_text(json.dumps({"version": 1, "responses": []}), encoding="utf-8")
+            return scholar.ScholarResult(
+                findings=(), ai_calls=2, elapsed_seconds=0.0, trace_steps=(), ask_you=(),
+                status="complete", run_id=kwargs["run_id"], cache_paths=(cache_path,),
+            )
+        origin = json.loads(cache_path.read_text(encoding="utf-8"))["origin"]
+        return scholar.ScholarResult(
+            findings=(), ai_calls=0, elapsed_seconds=0.0, trace_steps=(), ask_you=(),
+            status="complete", run_id=kwargs["run_id"],
+            replayed_from_run_id=origin["run_id"],
+            original_ai_calls=origin["ai_calls"],
+            original_elapsed_seconds=origin["elapsed_seconds"],
+        )
+
+    monkeypatch.setattr(scholar, "research_changes", fake_research)
+    assert cli.run_check(ACT3, scholar_mode="live", disabled_rules=("R007",)) == 0
+    live = json.loads((tmp_path / ".cache" / "last_run.json").read_text(encoding="utf-8"))
+    origin = json.loads(cache_path.read_text(encoding="utf-8"))["origin"]
+    assert origin == {"run_id": live["run_id"], "ai_calls": 2,
+                      "elapsed_seconds": live["elapsed_seconds"]}
+
+    capsys.readouterr()
+    assert cli.run_check(ACT3, scholar_mode="offline", disabled_rules=("R007",)) == 0
+    replay = json.loads((tmp_path / ".cache" / "last_run.json").read_text(encoding="utf-8"))
+    assert replay["ai_calls"] == 0
+    assert replay["replayed_from_run_id"] == live["run_id"]
+    assert replay["original_ai_calls"] == 2
+    assert replay["original_elapsed_seconds"] == live["elapsed_seconds"]
+    assert "replayed (offline) - original live run: 2 AI calls" in capsys.readouterr().out

@@ -29,6 +29,9 @@ class Report:
     trace_steps: tuple[str, ...] = ()
     ask_you: tuple[str, ...] = ()
     review_status: str = "complete"
+    replayed_from_run_id: str | None = None
+    original_ai_calls: int | None = None
+    original_elapsed_seconds: float | None = None
 
 
 def _single_line(value: str) -> str:
@@ -43,6 +46,17 @@ def _markdown_text(value: str) -> str:
 def _rule_summary(report: Report) -> str:
     ids = sorted({finding.rule_id for finding in report.rule_findings})
     return f"{len(ids)} ({', '.join(ids)})" if ids else "0"
+
+
+def _ai_calls_text(report: Report) -> str:
+    if (report.replayed_from_run_id is not None and
+            report.original_ai_calls is not None and
+            report.original_elapsed_seconds is not None):
+        return ("replayed (offline) - original live run: "
+                f"{report.original_ai_calls} AI calls, "
+                f"{report.original_elapsed_seconds:.2f} s "
+                f"(run {report.replayed_from_run_id})")
+    return str(report.ai_calls)
 
 
 def _rule_status(finding: RuleFinding) -> str:
@@ -119,7 +133,7 @@ def render_terminal(report: Report) -> str:
         f"Verdict: {_single_line(report.verdict)}",
         f"Run at: {_single_line(report.run_at)}",
         f"Elapsed: {report.elapsed_seconds:.2f} seconds",
-        f"AI calls: {report.ai_calls}",
+        f"AI calls: {_ai_calls_text(report)}",
         f"Rules matched: {_rule_summary(report)}",
     ]
     if report.ai_findings:
@@ -207,7 +221,7 @@ def render_markdown(report: Report) -> str:
         f"**Verdict:** {_markdown_text(report.verdict)}",
         f"**Run at:** {_markdown_text(report.run_at)}",
         f"**Elapsed:** {report.elapsed_seconds:.2f} seconds",
-        f"**AI calls:** {report.ai_calls}",
+        f"**AI calls:** {_markdown_text(_ai_calls_text(report))}",
         f"**Rules matched:** {_markdown_text(_rule_summary(report))}",
     ]
     if report.ai_findings:
@@ -405,7 +419,7 @@ def render_html(report: Report) -> str:
         f"<div class=\"banner {banner}\"><strong>Verdict:</strong> {_html_text(report.verdict)}</div>"
         f"<p><strong>Run at:</strong> {_html_text(_local_time(report.run_at))}<br>"
         f"<strong>Elapsed:</strong> {report.elapsed_seconds:.2f} seconds<br>"
-        f"<strong>AI calls:</strong> {report.ai_calls}<br>"
+        f"<strong>AI calls:</strong> {_html_text(_ai_calls_text(report))}<br>"
         f"<strong>Rules matched:</strong> {_html_text(_rule_summary(report))}</p>\n"
         f"{advisory}\n{sections}"
         "</main>\n</body>\n</html>\n"

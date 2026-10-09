@@ -7,7 +7,8 @@ import json
 import os
 from pathlib import Path
 import re
-from urllib.parse import urlsplit
+import tomllib
+from urllib.parse import quote, urlsplit
 
 from .corpus import load_corpus
 from .report import _local_time
@@ -16,6 +17,19 @@ from .rules import load_rules
 
 _KEY_PATTERN = re.compile(r"(?i)sk-[A-Za-z0-9_-]*")
 _SECRET_NAME = re.compile(r"(?i)(?:key|token|secret|password|credential)")
+_RUN_ID = re.compile(r"[A-Za-z0-9_-]+")
+_OPTIONAL_FEATURES = (
+    ("policy_compiler", "policy from English"),
+    ("cab_brief", "CAB brief"),
+    ("rollback", "rollback notes"),
+    ("compliance", "compliance mapping"),
+    ("cost", "cost delta"),
+    ("learning_report", "learning report"),
+    ("governance_pack", "governance rule pack"),
+    ("control_coverage", "control coverage"),
+    ("cloudformation_adapter", "CloudFormation adapter"),
+    ("team_overlays", "team overlays"),
+)
 
 
 def _safe(value: object) -> str:
@@ -78,7 +92,7 @@ def _timeline(root: Path, record: dict) -> str:
     run_id = str(record.get("run_id", ""))
     if not re.fullmatch(r"[A-Za-z0-9_-]+", run_id):
         return "<p>Trace unavailable.</p>"
-    path = root / "ledger" / "traces" / f"{run_id}.jsonl"
+    path = record.get("_trace_dir", root / "ledger" / "traces") / f"{run_id}.jsonl"
     steps: list[str] = []
     if path.is_file():
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -121,26 +135,65 @@ def _conditions(record: dict) -> str:
     return _items([_safe(item) for item in conditions if item])
 
 
-def _runs(root: Path) -> list[dict]:
-    folder = root / "ledger" / "runs"
+def _replay_calls(record: dict, targets: dict[str, str], archives: list[Path]) -> str:
+    """Show cached work with the measured live source and a local source link."""
+    source_id = str(record.get("replayed_from_run_id") or "")
+    if not _RUN_ID.fullmatch(source_id):
+        return _safe(record.get("ai_calls", 0))
+    calls = record.get("original_ai_calls")
+    seconds = record.get("original_elapsed_seconds")
+    if calls is None or seconds is None:
+        label = "metrics unavailable"
+    else:
+        label = f"{int(calls)} AI calls, {float(seconds):.2f} s"
+    href = targets.get(source_id)
+    if href:
+        href = f"#{href}"
+    else:
+        for archive in archives:
+            if (archive / "runs" / f"{source_id}.json").is_file():
+                href = f"../ledger/archive/{quote(archive.name, safe='')}/runs/{quote(source_id, safe='')}.json"
+                break
+    source = f'<a href="{_safe(href)}">{_safe(label)}</a>' if href else _safe(label)
+    return f"replayed (offline) - original live run: {source}"
+
+
+def _archives(root: Path) -> list[Path]:
+    folder = root / "ledger" / "archive"
     if not folder.is_dir():
         return []
-    records = [json.loads(path.read_text(encoding="utf-8")) for path in folder.glob("*.json")]
+    return sorted((path for path in folder.iterdir() if path.is_dir() and not path.is_symlink()),
+                  key=lambda path: path.name, reverse=True)
+
+
+def _runs(root: Path, *, include_archives: bool = False) -> list[dict]:
+    folders = [root / "ledger" / "runs"]
+    if include_archives:
+        folders.extend(path / "runs" for path in _archives(root))
+    records: list[dict] = []
+    for folder in folders:
+        if folder.is_dir():
+            for path in folder.glob("*.json"):
+                record = json.loads(path.read_text(encoding="utf-8"))
+                record["_trace_dir"] = folder.parent / "traces"
+                records.append(record)
     return sorted(records, key=lambda item: str(item.get("run_at", "")), reverse=True)
 
 
 def _learned(root: Path) -> list[dict]:
-    path = root / "ledger" / "ledger.jsonl"
-    if not path.is_file():
-        return []
     compiled: dict[str, dict] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        try:
-            entry = json.loads(line)
-        except ValueError:
+    paths = [archive / "ledger.jsonl" for archive in reversed(_archives(root))]
+    paths.append(root / "ledger" / "ledger.jsonl")
+    for path in paths:
+        if not path.is_file():
             continue
-        if entry.get("type") == "compile" and entry.get("status") == "compiled" and entry.get("rule_id"):
-            compiled[entry["rule_id"]] = entry
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if entry.get("type") == "compile" and entry.get("status") == "compiled" and entry.get("rule_id"):
+                compiled[entry["rule_id"]] = entry
     installed = {rule.id: rule for rule in load_rules()}
     documents = load_corpus(root / "corpus") if (root / "corpus").is_dir() else {}
     results = []
@@ -163,11 +216,15 @@ def _learned(root: Path) -> list[dict]:
     return results
 
 
-def write_console(root: Path) -> Path:
+def write_console(root: Path, *, include_archives: bool = False) -> Path:
     """Render saved runs; never connect to a service or read credentials."""
     root = Path(root)
-    runs = _runs(root)
+    runs = _runs(root, include_archives=include_archives)
     learned = _learned(root)
+    archives = _archives(root)
+    settings_path = root / "argus.toml"
+    settings = tomllib.loads(settings_path.read_text(encoding="utf-8")) if settings_path.is_file() else {}
+    flags = settings.get("flags", {})
     baseline_path = root / ".cache" / "act3_baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.is_file() else {}
     avoided = int(baseline.get("ai_calls", 0)) if any(item["rule_id"] == "R007" for item in learned) else 0
@@ -181,6 +238,11 @@ def write_console(root: Path) -> Path:
     metric_html = ''.join(f'<div class="metric"><strong>{_safe(value)}</strong><span>{_safe(label)}</span></div>'
                           for label, value in totals)
 
+    targets = {
+        str(record["run_id"]): f"run-{index}"
+        for index, record in enumerate(runs)
+        if _RUN_ID.fullmatch(str(record.get("run_id", "")))
+    }
     rows = []
     for index, record in enumerate(runs):
         verdict = str(record.get("verdict", "NEEDS HUMAN"))
@@ -188,12 +250,13 @@ def write_console(root: Path) -> Path:
                  "GO": "go"}.get(verdict, "needs-human")
         target = f"detail-{index}"
         plan = Path(str(record.get("plan", ""))).name
+        replay_calls = _replay_calls(record, targets, archives)
         rows.append(
-            f'<tr><td>{_safe(_local_time(str(record.get("run_at", ""))))}</td>'
+            f'<tr id="run-{index}"><td>{_safe(_local_time(str(record.get("run_at", ""))))}</td>'
             f'<td><button type="button" data-target="{target}" aria-expanded="false">{_safe(plan)}</button></td>'
             f'<td><span class="badge {badge}">{_safe(verdict)}</span></td>'
             f'<td>{_safe(record.get("author", "human"))}</td>'
-            f'<td>{_safe(record.get("ai_calls", 0))}</td>'
+            f'<td>{replay_calls}</td>'
             f'<td>{float(record.get("elapsed_seconds", 0)):.2f}</td></tr>'
             f'<tr id="{target}" class="detail-row" hidden><td colspan="6">'
             '<h3>Findings</h3>' + _findings(record)
@@ -225,6 +288,18 @@ def write_console(root: Path) -> Path:
             savings.append(f'<tr><td>{_safe(item["rule_id"])}</td>'
                            '<td>Not measured</td><td>Not measured</td></tr>')
 
+    works_now = ["local plan checks", "cited Scholar findings", "enforced rules",
+                 "agent scope", "offline replay"]
+    works_now.extend(label for flag, label in _OPTIONAL_FEATURES if flags.get(flag) is True)
+    prototypes = [label for flag, label in _OPTIONAL_FEATURES if flags.get(flag) is not True]
+    archive_items = [f"{_safe(path.name)} ({len(list((path / 'runs').glob('*.json')))} runs)"
+                     for path in archives]
+    footer = (
+        '<footer><strong>Works now:</strong>' + _items([_safe(item) for item in works_now])
+        + '<strong>Prototype / roadmap:</strong>' + _items([_safe(item) for item in prototypes])
+        + '<strong>Archives:</strong>' + _items(archive_items) + '</footer>'
+    )
+
     html = (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -247,7 +322,8 @@ def write_console(root: Path) -> Path:
         '</style></head><body><header><h1>ARGUS Console</h1>'
         '<p>Evidence-backed safety gate for Terraform and agent-written infrastructure changes.</p></header>'
         f'<div class="metrics">{metric_html}</div>'
-        '<section><h2>Runs</h2><table><thead><tr><th>Time (IST)</th><th>Plan</th>'
+        f'<section><h2>Runs — {"all sessions" if include_archives else "latest session"}</h2>'
+        '<table><thead><tr><th>Time (IST)</th><th>Plan</th>'
         '<th>Verdict</th><th>Author</th><th>AI calls</th><th>Seconds</th></tr></thead><tbody>'
         + ''.join(rows) + '</tbody></table></section>'
         '<section><h2>Learned rules library</h2><table><thead><tr><th>Rule</th>'
@@ -255,9 +331,7 @@ def write_console(root: Path) -> Path:
         '<th>Test status</th></tr></thead><tbody>' + ''.join(library) + '</tbody></table></section>'
         '<section><h2>Savings</h2><table><thead><tr><th>Rule</th><th>Before</th><th>After</th>'
         '</tr></thead><tbody>' + ''.join(savings) + '</tbody></table></section>'
-        '<footer><strong>Works now:</strong> local plan checks, cited Scholar findings, enforced '
-        'rules, agent scope, offline replay. <strong>Prototype / roadmap:</strong> optional governance '
-        'packs and additional IaC adapters.</footer>'
+        + footer +
         '<script>document.querySelectorAll("button[data-target]").forEach(function(button){'
         'button.addEventListener("click",function(){var row=document.getElementById(button.dataset.target);'
         'row.hidden=!row.hidden;button.setAttribute("aria-expanded",String(!row.hidden));});});</script>'

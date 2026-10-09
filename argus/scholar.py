@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
+from math import isfinite
 import os
 from pathlib import Path
 from time import perf_counter
@@ -35,6 +36,10 @@ class ScholarResult:
     ask_you: tuple[str, ...]
     status: str
     run_id: str
+    replayed_from_run_id: str | None = None
+    original_ai_calls: int | None = None
+    original_elapsed_seconds: float | None = None
+    cache_paths: tuple[Path, ...] = ()
 
 
 class _ReplayResponses:
@@ -71,7 +76,7 @@ def _cache_key(change: Change, documents: Mapping[str, Document], model: str, sc
     return sha256(encoded).hexdigest()
 
 
-def _read_cache(path: Path) -> list[dict[str, Any]]:
+def _read_cache(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("version") != 1 or not isinstance(payload.get("responses"), list):
         raise ValueError("unsupported Scholar cache format")
@@ -79,7 +84,19 @@ def _read_cache(path: Path) -> list[dict[str, Any]]:
     for record in records:
         if not isinstance(record, dict) or not isinstance(record.get("output"), list) or not isinstance(record.get("output_text"), str):
             raise ValueError("invalid Scholar cache response")
-    return records
+    origin = payload.get("origin")
+    if origin is not None:
+        if not isinstance(origin, dict):
+            raise ValueError("invalid Scholar cache origin")
+        run_id = origin.get("run_id")
+        calls = origin.get("ai_calls")
+        seconds = origin.get("elapsed_seconds")
+        if (not isinstance(run_id, str) or not run_id or
+                any(not (char.isalnum() or char in "_-") for char in run_id) or
+                type(calls) is not int or calls < 0 or
+                type(seconds) not in (int, float) or not isfinite(seconds) or seconds < 0):
+            raise ValueError("invalid Scholar cache origin")
+    return records, origin
 
 
 def _write_cache(path: Path, records: tuple[dict[str, Any], ...]) -> None:
@@ -88,6 +105,29 @@ def _write_cache(path: Path, records: tuple[dict[str, Any], ...]) -> None:
     temporary = path.with_suffix(".tmp")
     temporary.write_text(_redact_keys(serialized) + "\n", encoding="utf-8")
     temporary.replace(path)
+
+
+def stamp_cache_origin(
+    paths: Sequence[Path], run_id: str, ai_calls: int, elapsed_seconds: float,
+) -> None:
+    """Link a completed live run to the exact response caches it produced."""
+    if (not run_id or any(not (char.isalnum() or char in "_-") for char in run_id)
+            or type(ai_calls) is not int or ai_calls < 0
+            or not isfinite(elapsed_seconds) or elapsed_seconds < 0):
+        raise ValueError("invalid live run provenance")
+    origin = {"run_id": run_id, "ai_calls": ai_calls,
+              "elapsed_seconds": elapsed_seconds}
+    for path in dict.fromkeys(paths):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("version") != 1 or not isinstance(payload.get("responses"), list):
+            raise ValueError("unsupported Scholar cache format")
+        payload["origin"] = origin
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(
+            _redact_keys(json.dumps(payload, ensure_ascii=False, sort_keys=True)) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(path)
 
 
 def _live_client() -> Any:
@@ -158,6 +198,9 @@ def research_changes(
     ask_you: list[str] = []
     ai_calls = 0
     status = "complete"
+    cache_paths: list[Path] = []
+    replay_origins: list[dict[str, Any]] = []
+    replayed_cache_count = 0
     append_trace(trace_path, {"event": "scholar_started", "mode": "live" if live else "offline"})
 
     for change in changes:
@@ -170,7 +213,8 @@ def research_changes(
             active_client = client if client is not None else _live_client()
         else:
             try:
-                active_client = _ReplayClient(_read_cache(cache_path))
+                records, origin = _read_cache(cache_path)
+                active_client = _ReplayClient(records)
             except (OSError, ValueError, TypeError, KeyError):
                 message = f"No usable offline Scholar response for {change.address}; run --live or review it."
                 ask_you.append(message)
@@ -199,6 +243,11 @@ def research_changes(
             raise
         if live and cache_live_responses and result.status == "complete":
             _write_cache(cache_path, result.response_records)
+            cache_paths.append(cache_path)
+        elif not live and result.status == "complete":
+            replayed_cache_count += 1
+            if origin is not None:
+                replay_origins.append(origin)
         ai_calls += result.ai_calls
         steps.extend(result.trace_steps)
         ask_you.extend(result.ask_you)
@@ -212,6 +261,10 @@ def research_changes(
                                           "resource": change.address})
                 break
 
+    unique_origins = {item["run_id"]: item for item in replay_origins}
+    replay_origin = (next(iter(unique_origins.values()))
+                     if len(unique_origins) == 1 and len(replay_origins) == replayed_cache_count
+                     else None)
     return ScholarResult(
         findings=tuple(all_findings),
         ai_calls=ai_calls,
@@ -220,4 +273,8 @@ def research_changes(
         ask_you=tuple(ask_you),
         status=status,
         run_id=run_id,
+        replayed_from_run_id=replay_origin["run_id"] if replay_origin else None,
+        original_ai_calls=replay_origin["ai_calls"] if replay_origin else None,
+        original_elapsed_seconds=replay_origin["elapsed_seconds"] if replay_origin else None,
+        cache_paths=tuple(cache_paths),
     )

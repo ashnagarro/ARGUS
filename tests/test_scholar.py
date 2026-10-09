@@ -13,7 +13,7 @@ from argus.agent_loop import _api_error_details, _api_error_summary, _redact_key
 from argus.corpus import load_corpus
 from argus.models import Change, RuleFinding
 from argus.permissions import decide_permission, load_policy
-from argus.scholar import ScholarModelUnavailable, _write_cache, research_changes
+from argus.scholar import ScholarModelUnavailable, _write_cache, research_changes, stamp_cache_origin
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,12 +104,17 @@ def test_recorded_tool_loop_verifies_finding_and_replays_offline(tmp_path: Path,
     assert fake_key not in trace
     cache_file = next((tmp_path / "cache").glob("*.json"))
     assert fake_key not in cache_file.read_text(encoding="utf-8")
+    assert result.cache_paths == (cache_file,)
+    stamp_cache_origin(result.cache_paths, result.run_id, result.ai_calls, 12.34)
 
     offline = research_changes([_change()], [], live=False, **{**kwargs, "run_id": "synthetic-offline"})
     assert offline.status == "complete"
     assert offline.ai_calls == 0
     assert offline.findings == result.findings
     assert offline.trace_steps == result.trace_steps
+    assert offline.replayed_from_run_id == "synthetic-live"
+    assert offline.original_ai_calls == 4
+    assert offline.original_elapsed_seconds == 12.34
 
 
 def test_rule_caught_change_skips_scholar(tmp_path: Path) -> None:
