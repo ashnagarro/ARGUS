@@ -159,4 +159,24 @@ Done when: running demo all 3 times gives identical verdicts.
 15 Learning report: reports/learning.html computed from the ledger and fixtures/expected.yaml:
    verdict accuracy, verification rate, AI calls avoided, rules learned, misses shown openly.
 
+19 Team portability. Flag team_overlays.
+   Add a pyproject.toml entry point so `argus` works as a command after pip install from Git.
+   Organize rule packs in packs/baseline/, packs/aws-core/, and packs/governance/. Each has a
+   pack.toml with name, version, owner, and description. Existing tests must still pass.
+   Layer configuration in this order: org baseline (always on), enabled packs, then the team
+   overlay at .argus/team.toml. The overlay supports approved_regions, required_tags, owners,
+   enabled_packs, and extra_rules_dir. An overlay may raise severity or add rules, but may NEVER
+   disable or lower a baseline rule. An attempt produces a critical config finding. Only
+   exceptions.yaml entries with owner, ticket, and expiry may relax a baseline rule.
+   `argus init` creates .argus/team.toml with commented defaults.
+   `argus promote <rule_id>` copies a team-learned rule and its test into packs/aws-core/ and
+   prints a review checklist.
+   Add templates/ci/github-actions.yml, templates/ci/azure-pipelines.yml, and
+   templates/ci/gitlab-ci.yml. Each runs argus check and fails on NO-GO.
+   Demo: examples/team-payments (strict) and examples/team-analytics (default) give different
+   verdicts on the same plan; an overlay that disables a baseline rule is rejected.
+   Add docs/ADOPTION.md: "Adopt ARGUS in your team in 5 minutes".
+
+Optional phase order after Gate 1: 16, 10, 19, 17 (with 13), 15, 11, 12.
+
 Start now with PHASE 0 only. Then stop and wait for me.
