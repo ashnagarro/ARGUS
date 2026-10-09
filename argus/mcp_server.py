@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 
 from . import cli
 from .corpus import load_corpus
@@ -15,6 +16,12 @@ from .corpus import load_corpus
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 mcp = MCPServer("ARGUS", description="Evidence-backed infrastructure plan safety gate")
+READ_ONLY_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
 
 
 def _log_call(tool: str, *, run_id: str, status: str) -> None:
@@ -43,7 +50,7 @@ def _run_records() -> list[dict]:
     return sorted(records, key=lambda record: record.get("run_at", ""), reverse=True)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def argus_check(plan_path: str, live: bool = False) -> dict:
     """Review a project-local Terraform plan and save the decision in the ledger."""
     run_id = uuid4().hex
@@ -73,7 +80,7 @@ def argus_check(plan_path: str, live: bool = False) -> dict:
         raise
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 def argus_explain(finding_id: str) -> dict:
     """Explain a saved rule or Scholar finding with its available evidence."""
     call_id = uuid4().hex

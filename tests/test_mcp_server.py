@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import sys
 
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 import pytest
 
 from argus import cli, mcp_server
@@ -32,10 +35,42 @@ def test_mcp_tool_schemas_and_mocked_transport(monkeypatch) -> None:
     check = next(tool for tool in tools if tool.name == "argus_check")
     assert set(check.input_schema["required"]) == {"plan_path"}
     assert check.input_schema["properties"]["live"]["type"] == "boolean"
+    for tool in tools:
+        assert tool.annotations.model_dump(by_alias=True, exclude_none=True) == {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        }
     called = []
     monkeypatch.setattr(mcp_server.mcp, "run", lambda *, transport: called.append(transport))
     mcp_server.main()
     assert called == ["stdio"]
+
+
+def test_mcp_launcher_from_agent_demo() -> None:
+    async def list_tools() -> set[str]:
+        server = StdioServerParameters(
+            command=sys.executable,
+            args=[str(ROOT / "argus_mcp.py")],
+            cwd=ROOT / "examples" / "agent-demo",
+        )
+        async with stdio_client(server) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                response = await session.list_tools()
+                return {tool.name for tool in response.tools}
+
+    assert {"argus_check", "argus_explain"} <= asyncio.run(list_tools())
+
+
+def test_mcp_check_resolves_plan_paths_from_agent_demo(tmp_path: Path, monkeypatch) -> None:
+    plan = _isolated_project(tmp_path, monkeypatch)
+    monkeypatch.chdir(ROOT / "examples" / "agent-demo")
+    for path in ("fixtures/plans/act1.json", str(plan)):
+        outcome = mcp_server.argus_check(path)
+        assert outcome["verdict"] == "NO-GO"
+        assert (tmp_path / "ledger" / "runs" / f"{outcome['run_id']}.json").is_file()
 
 
 def test_mcp_check_and_explain_write_ledger_only(tmp_path: Path, monkeypatch) -> None:
