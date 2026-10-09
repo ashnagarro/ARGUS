@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from .corpus import load_corpus, read_section, search_corpus
 from .corpus_fetch import fetch_corpus
+from .models import AIFinding
 from .parse_plan import parse_plan
 from .permissions import decide_permission, load_policy
 from .report import Report, render_terminal, write_reports
@@ -56,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     compile_command = commands.add_parser(
         "compile", help="Compile an approved finding into a rule."
     )
-    compile_command.add_argument("finding_id", nargs="?", help="Finding ID.")
+    compile_command.add_argument("finding_id", help="ID of a VERIFIED finding from the last check.")
 
     demo = commands.add_parser("demo", help="Run a demonstration scenario.")
     demo.add_argument(
@@ -130,6 +131,63 @@ def run_tool(command: str, args: argparse.Namespace) -> int:
     return 1
 
 
+def _approve_smith_write(action: str) -> bool:
+    """Require an affirmative human answer before each Smith write attempt."""
+    print(f"Approval required: {action}")
+    try:
+        answer = input("Approve this write? [y/N] ")
+    except EOFError:
+        return False
+    return answer.strip().lower() in {"y", "yes"}
+
+
+def run_compile(finding_id: str) -> int:
+    """Compile one verified finding from the immediately preceding check."""
+    from .smith import compile_finding
+
+    latest_path = PROJECT_ROOT / ".cache" / "last_run.json"
+    if not latest_path.is_file():
+        print("argus compile: no previous check was found; run argus check --live first.", file=sys.stderr)
+        return 2
+    latest = json.loads(latest_path.read_text(encoding="utf-8"))
+    raw = next((item for item in latest.get("ai_findings", [])
+                if item.get("id") == finding_id), None)
+    if raw is None:
+        print(f"argus compile: finding {finding_id} is not in the last check.", file=sys.stderr)
+        return 2
+    if not raw.get("verified"):
+        print(f"argus compile: finding {finding_id} is UNVERIFIED; review its evidence.", file=sys.stderr)
+        return 2
+    finding = AIFinding(
+        id=raw["id"], resource=raw["resource"], claim=raw["claim"],
+        severity=raw["severity"], recommended_action=raw["recommended_action"],
+        verified=True, verification_reason=raw.get("verification_reason"),
+        evidence=tuple(raw["evidence"]), change_type=raw.get("change_type", ""),
+        confidence=raw.get("confidence", ""),
+    )
+    baseline_path = PROJECT_ROOT / ".cache" / "act3_baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.is_file() else {}
+    executable = _settings().get("smith", {}).get("codex_executable", "codex")
+    result = compile_finding(
+        finding, PROJECT_ROOT, approve=_approve_smith_write,
+        codex_executable=executable,
+        before_ai_calls=baseline.get("ai_calls"),
+        before_seconds=baseline.get("elapsed_seconds"),
+    )
+    if result.status != "compiled":
+        print(f"Ask you: {result.reason or 'Smith needs human review.'}")
+        print(f"Trace: {result.trace_path}")
+        return 2
+    print(f"Compiled {result.rule_id} from {finding_id} in {result.attempts} attempt(s).")
+    if result.before_ai_calls is None or result.before_seconds is None:
+        print("act3 before: not measured; run act3 with --live before compiling to record a baseline.")
+    else:
+        print(f"act3 before: {result.before_ai_calls} AI calls, {result.before_seconds:.2f} seconds")
+    print(f"act3 after: {result.after_ai_calls} AI calls, {result.after_seconds:.2f} seconds")
+    print(f"Trace: {result.trace_path}")
+    return 0
+
+
 def run_check(
     plan: Path, report_dir: Path = Path("reports"), *,
     scholar_mode: str | None = None,
@@ -188,6 +246,12 @@ def run_check(
         "ai_calls": ai_calls, "elapsed_seconds": report.elapsed_seconds,
         "ai_findings": [asdict(finding) for finding in ai_findings],
     }, sort_keys=True, ensure_ascii=False), encoding="utf-8")
+    if (Path(plan).name == "act3_major_upgrade_second.json" and scholar_mode == "live"
+            and scholar_status == "complete" and ai_calls > 0):
+        (PROJECT_ROOT / ".cache" / "act3_baseline.json").write_text(json.dumps({
+            "run_id": run_id, "ai_calls": ai_calls,
+            "elapsed_seconds": report.elapsed_seconds,
+        }, sort_keys=True), encoding="utf-8")
     _append_trace(run_id, {"event": "run_end", "verdict": verdict,
                            "scholar_status": scholar_status, "ai_calls": ai_calls})
     print(render_terminal(report))
@@ -206,6 +270,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_check(args.plan, args.report_dir, scholar_mode=mode)
         except (OSError, ValueError, RuntimeError) as error:
             print(f"argus check: {error}", file=sys.stderr)
+            return 2
+    if args.command == "compile":
+        try:
+            return run_compile(args.finding_id)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"argus compile: {error}", file=sys.stderr)
             return 2
     if args.command == "corpus" and args.corpus_command == "fetch":
         try:
