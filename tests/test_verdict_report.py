@@ -1,11 +1,10 @@
 """Phase 4 verdict, report, and command-line checks."""
 
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 
+from argus import cli
 from argus.models import AIFinding, RuleFinding
 from argus.report import Report, render_html, render_markdown
 from argus.verdict import decide_verdict, merge_conditions
@@ -90,19 +89,15 @@ def test_reports_group_findings_and_escape_html() -> None:
     ],
 )
 def test_check_command_writes_reports(
-    fixture: str, expected_status: int, expected_verdict: str, tmp_path: Path
+    fixture: str, expected_status: int, expected_verdict: str, tmp_path: Path,
+    monkeypatch, capsys,
 ) -> None:
     report_dir = tmp_path / "reports"
-    result = subprocess.run(
-        [sys.executable, "-m", "argus", "check", str(PLANS / fixture),
-         "--report-dir", str(report_dir)],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == expected_status, result.stderr
-    assert expected_verdict in result.stdout
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    for name in ("permissions.yaml", "exceptions.yaml"):
+        (tmp_path / name).write_bytes((ROOT / name).read_bytes())
+    assert cli.main(["check", str(PLANS / fixture),
+                     "--report-dir", str(report_dir)]) == expected_status
+    assert expected_verdict in capsys.readouterr().out
     assert expected_verdict in (report_dir / "latest.md").read_text(encoding="utf-8")
     assert expected_verdict in (report_dir / "latest.html").read_text(encoding="utf-8")

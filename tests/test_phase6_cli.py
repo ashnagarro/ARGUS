@@ -12,6 +12,11 @@ from argus.models import AIFinding
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _policy_files(root: Path) -> None:
+    for name in ("permissions.yaml", "exceptions.yaml"):
+        (root / name).write_bytes((ROOT / name).read_bytes())
+
+
 def test_verified_scholar_finding_reaches_report_and_last_run(
     tmp_path: Path, monkeypatch,
 ) -> None:
@@ -24,6 +29,7 @@ def test_verified_scholar_finding_reaches_report_and_last_run(
         '[scholar]\nmodel = "gpt-6.1-sol"\n', encoding="utf-8",
     )
     monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    _policy_files(tmp_path)
     finding = AIFinding(
         id="AI-SYNTHETIC", resource="aws_db_instance.orders",
         change_type="update", claim="Synthetic sourced concern",
@@ -71,6 +77,7 @@ def test_scholar_needs_human_is_not_a_successful_check(tmp_path: Path, monkeypat
     )
     (tmp_path / "argus.toml").write_text('[scholar]\nmodel = "gpt-6.1-sol"\n', encoding="utf-8")
     monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    _policy_files(tmp_path)
     monkeypatch.setattr(scholar, "research_changes", lambda *args, **kwargs: scholar.ScholarResult(
         findings=(), ai_calls=0, elapsed_seconds=0.0, trace_steps=(),
         ask_you=("No cached answer; review the change.",), status="needs_human",
@@ -101,6 +108,7 @@ def test_incomplete_scholar_without_reason_still_fails_closed(tmp_path: Path, mo
     corpus.mkdir()
     (tmp_path / "argus.toml").write_text('[scholar]\nmodel = "gpt-6.1-sol"\n', encoding="utf-8")
     monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    _policy_files(tmp_path)
     monkeypatch.setattr(scholar, "research_changes", lambda *args, **kwargs: scholar.ScholarResult(
         findings=(), ai_calls=1, elapsed_seconds=0.0, trace_steps=(),
         ask_you=(), status="needs_human", run_id=kwargs["run_id"],
@@ -122,6 +130,7 @@ def test_scholar_exception_writes_needs_human_report(tmp_path: Path, monkeypatch
     corpus.mkdir()
     (tmp_path / "argus.toml").write_text('[scholar]\nmodel = "gpt-6.1-sol"\n', encoding="utf-8")
     monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    _policy_files(tmp_path)
 
     def failing_research(*args, **kwargs):
         raise scholar.ScholarModelUnavailable(

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from importlib import import_module
 import inspect
 from pkgutil import iter_modules
-from typing import ClassVar, Sequence
+from typing import ClassVar, Collection, Sequence
 
 from argus.models import Change, RuleFinding
 
@@ -51,10 +51,12 @@ def load_rules() -> list[Rule]:
     return rules
 
 
-def run_rules(changes: Sequence[Change]) -> list[RuleFinding]:
+def run_rules(
+    changes: Sequence[Change], *, disabled_rule_ids: Collection[str] = (),
+) -> list[RuleFinding]:
     """Apply all loaded rules to normalized changes."""
     all_changes = tuple(changes)
     return [finding
-            for rule in load_rules()
+            for rule in load_rules() if rule.id not in disabled_rule_ids
             for change in all_changes
             for finding in rule.check(change, all_changes)]

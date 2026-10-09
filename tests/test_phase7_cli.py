@@ -65,8 +65,7 @@ def test_compile_uses_last_verified_finding_config_and_approval(
     assert cli.run_compile("AI-SYNTHETIC") == 0
     output = capsys.readouterr().out
     assert "Compiled R007" in output
-    assert "act3 before: 3 AI calls, 4.50 seconds" in output
-    assert "act3 after: 0 AI calls, 0.25 seconds" in output
+    assert "before: 3 AI calls, 4.50 s  ->  after: 0 AI calls, 0.00 s" in output
 
 
 def test_compile_rejects_unverified_last_finding_before_smith(

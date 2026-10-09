@@ -183,6 +183,7 @@ Done when: running demo all 3 times gives identical verdicts.
 - HTML report: large coloured verdict banner (red NO-GO, amber GO-WITH-CONDITIONS, green GO),
   readable in a projector at the back of a room. Timestamps in local time (Asia/Kolkata).
 - Hide empty sections ("None.") in the HTML report except Ask you.
+- Scholar stops as soon as it has a verified final answer.
 
 === OPTIONAL PHASES (only when I ask) ===
 10 Policy from English: python -m argus policy "<sentence>" compiles a plain-English policy into

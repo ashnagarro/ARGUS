@@ -40,6 +40,12 @@ def _rule_summary(report: Report) -> str:
     return f"{len(ids)} ({', '.join(ids)})" if ids else "0"
 
 
+def _rule_status(finding: RuleFinding) -> str:
+    if finding.waived:
+        return f"WAIVED until {finding.waiver_expires}: {finding.waiver_reason}"
+    return finding.severity
+
+
 def _ai_groups(report: Report) -> tuple[tuple[AIFinding, ...], tuple[AIFinding, ...]]:
     verified = tuple(finding for finding in report.ai_findings if finding.verified)
     unverified = tuple(finding for finding in report.ai_findings if not finding.verified)
@@ -92,7 +98,7 @@ def render_terminal(report: Report) -> str:
     if report.rule_findings:
         for finding in report.rule_findings:
             lines.append(
-                f"- {finding.rule_id} [{finding.severity}] {finding.resource}: "
+                f"- {finding.rule_id} [{_rule_status(finding)}] {finding.resource}: "
                 f"{_single_line(finding.title)} - {_single_line(finding.message)}"
             )
     else:
@@ -166,7 +172,7 @@ def render_markdown(report: Report) -> str:
     if report.rule_findings:
         for finding in report.rule_findings:
             lines.append(
-                f"- **{finding.rule_id} [{finding.severity}]** "
+                f"- **{finding.rule_id} [{_markdown_text(_rule_status(finding))}]** "
                 f"{_markdown_text(finding.resource)}: {_markdown_text(finding.title)} — "
                 f"{_markdown_text(finding.message)}"
             )
@@ -256,7 +262,7 @@ def render_html(report: Report) -> str:
         "<li><strong>"
         + _html_text(finding.rule_id)
         + "</strong> ["
-        + _html_text(finding.severity)
+        + _html_text(_rule_status(finding))
         + "] "
         + _html_text(finding.resource)
         + ": "

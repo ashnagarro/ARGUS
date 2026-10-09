@@ -3,9 +3,11 @@
 import argparse
 from collections.abc import Sequence
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 import json
 from pathlib import Path
+import re
 import sys
 from time import perf_counter
 import tomllib
@@ -17,12 +19,14 @@ from .models import AIFinding
 from .parse_plan import parse_plan
 from .permissions import decide_permission, load_policy
 from .report import Report, render_terminal, write_reports
-from .rules import run_rules
+from .rules import load_rules, run_rules
 from .verdict import decide_verdict, merge_conditions
 from .verify import verify_quote
+from .warden import apply_exceptions, check_agent_files, load_agents, load_exceptions
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_RUN_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _append_trace(run_id: str, event: dict) -> None:
@@ -53,11 +57,22 @@ def build_parser() -> argparse.ArgumentParser:
     ai_mode = check.add_mutually_exclusive_group()
     ai_mode.add_argument("--offline", action="store_true", help="Replay cached Scholar answers.")
     ai_mode.add_argument("--live", action="store_true", help="Call the OpenAI API for uncovered changes.")
+    check.add_argument(
+        "--disable-rule", action="append", default=[], metavar="ID",
+        help="Skip a deterministic rule for this check (repeatable).",
+    )
+    check.add_argument("--author", default="human", help="Change author, such as agent:smith.")
+    check.add_argument("--changed-files", nargs="+", default=[], metavar="PATH",
+                       help="Project-relative files changed by an agent.")
 
     compile_command = commands.add_parser(
         "compile", help="Compile an approved finding into a rule."
     )
-    compile_command.add_argument("finding_id", help="ID of a VERIFIED finding from the last check.")
+    compile_command.add_argument("finding_id", help="ID of a VERIFIED Scholar finding.")
+    source = compile_command.add_mutually_exclusive_group()
+    source.add_argument("--run", dest="run_id", help="Use this saved run ID.")
+    source.add_argument("--from", dest="from_plan", type=Path,
+                        help="Replay this plan offline, then compile its finding.")
 
     demo = commands.add_parser("demo", help="Run a demonstration scenario.")
     demo.add_argument(
@@ -141,19 +156,58 @@ def _approve_smith_write(action: str) -> bool:
     return answer.strip().lower() in {"y", "yes"}
 
 
-def run_compile(finding_id: str) -> int:
-    """Compile one verified finding from the immediately preceding check."""
+def _saved_run(finding_id: str, run_id: str | None) -> dict:
+    """Find a durable run, preferring the newest run containing this finding."""
+    runs_dir = PROJECT_ROOT / "ledger" / "runs"
+    if run_id is not None:
+        if not _RUN_ID.fullmatch(run_id):
+            raise ValueError("invalid run ID")
+        path = runs_dir / f"{run_id}.json"
+        if not path.is_file():
+            raise ValueError(f"run {run_id} was not found in ledger/runs")
+        return json.loads(path.read_text(encoding="utf-8"))
+    if runs_dir.is_dir():
+        for path in sorted(runs_dir.glob("*.json"),
+                           key=lambda item: item.stat().st_mtime_ns, reverse=True):
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if any(item.get("id") == finding_id for item in record.get("ai_findings", [])):
+                return record
+    # Existing installations may have a last_run.json from before durable runs.
+    legacy = PROJECT_ROOT / ".cache" / "last_run.json"
+    if legacy.is_file():
+        record = json.loads(legacy.read_text(encoding="utf-8"))
+        if any(item.get("id") == finding_id for item in record.get("ai_findings", [])):
+            return record
+    raise ValueError(f"finding {finding_id} was not found in saved runs")
+
+
+def _baseline() -> dict:
+    path = PROJECT_ROOT / ".cache" / "act3_baseline.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def _comparison(baseline: dict) -> str:
+    return (f"before: {baseline['ai_calls']} AI calls, "
+            f"{baseline['elapsed_seconds']:.2f} s  ->  after: 0 AI calls, 0.00 s")
+
+
+def run_compile(
+    finding_id: str, *, run_id: str | None = None, from_plan: Path | None = None,
+) -> int:
+    """Compile a verified finding from durable history or an offline replay."""
     from .smith import compile_finding
 
-    latest_path = PROJECT_ROOT / ".cache" / "last_run.json"
-    if not latest_path.is_file():
-        print("argus compile: no previous check was found; run argus check --live first.", file=sys.stderr)
-        return 2
-    latest = json.loads(latest_path.read_text(encoding="utf-8"))
-    raw = next((item for item in latest.get("ai_findings", [])
+    if from_plan is not None:
+        run_id = uuid4().hex
+        code = run_check(from_plan, scholar_mode="offline", run_id=run_id,
+                         force_scholar=True)
+        if code == 2:
+            return 2
+    record = _saved_run(finding_id, run_id)
+    raw = next((item for item in record.get("ai_findings", [])
                 if item.get("id") == finding_id), None)
     if raw is None:
-        print(f"argus compile: finding {finding_id} is not in the last check.", file=sys.stderr)
+        print(f"argus compile: finding {finding_id} is not in run {record.get('run_id', 'unknown')}.", file=sys.stderr)
         return 2
     if not raw.get("verified"):
         print(f"argus compile: finding {finding_id} is UNVERIFIED; review its evidence.", file=sys.stderr)
@@ -165,8 +219,7 @@ def run_compile(finding_id: str) -> int:
         evidence=tuple(raw["evidence"]), change_type=raw.get("change_type", ""),
         confidence=raw.get("confidence", ""),
     )
-    baseline_path = PROJECT_ROOT / ".cache" / "act3_baseline.json"
-    baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.is_file() else {}
+    baseline = _baseline()
     smith_settings = _settings().get("smith", {})
     executable = smith_settings.get("codex_executable", "codex")
     result = compile_finding(
@@ -182,10 +235,9 @@ def run_compile(finding_id: str) -> int:
         return 2
     print(f"Compiled {result.rule_id} from {finding_id} in {result.attempts} attempt(s).")
     if result.before_ai_calls is None or result.before_seconds is None:
-        print("act3 before: not measured; run act3 with --live before compiling to record a baseline.")
+        print("act3 before: not measured; run act3 with --live --disable-rule R007 to record a baseline.")
     else:
-        print(f"act3 before: {result.before_ai_calls} AI calls, {result.before_seconds:.2f} seconds")
-    print(f"act3 after: {result.after_ai_calls} AI calls, {result.after_seconds:.2f} seconds")
+        print(_comparison(baseline))
     print(f"Trace: {result.trace_path}")
     return 0
 
@@ -193,18 +245,65 @@ def run_compile(finding_id: str) -> int:
 def run_check(
     plan: Path, report_dir: Path = Path("reports"), *,
     scholar_mode: str | None = None,
+    disabled_rules: Sequence[str] = (),
+    run_id: str | None = None,
+    force_scholar: bool = False,
+    author: str = "human",
+    changed_files: Sequence[str] = (),
 ) -> int:
     """Run rules and optionally research uncovered changes with Scholar."""
+    if report_dir == Path("reports"):
+        report_dir = PROJECT_ROOT / report_dir
     started = perf_counter()
-    run_id = uuid4().hex
-    _append_trace(run_id, {"event": "run_start", "mode": scholar_mode or "rules"})
+    run_id = run_id or uuid4().hex
+    if not _RUN_ID.fullmatch(run_id):
+        raise ValueError("invalid run ID")
+    unknown = set(disabled_rules) - {rule.id for rule in load_rules()}
+    if unknown:
+        raise ValueError(f"unknown rule ID: {', '.join(sorted(unknown))}")
+    _append_trace(run_id, {"event": "run_start", "mode": scholar_mode or "rules",
+                           "disabled_rules": list(disabled_rules)})
     changes = parse_plan(plan)
-    rule_findings = tuple(run_rules(changes))
+    if author.startswith("agent:") and not changed_files:
+        raise ValueError("--changed-files is required for an agent author")
+    if changed_files and not author.startswith("agent:"):
+        raise ValueError("--changed-files requires --author agent:<name>")
+    policy = load_policy(PROJECT_ROOT / "permissions.yaml")
+    permission_asks: list[str] = []
+    for change in changes:
+        decision = decide_permission("get_change", change.resource_type,
+                                     is_write=False, policy=policy)
+        _append_trace(run_id, {"event": "permission_decision", "action": "get_change",
+                               "resource": change.address, "decision": decision.decision,
+                               "reason": decision.reason})
+        if not decision.approved:
+            permission_asks.append(f"Approval required to review {change.address}: {decision.reason}.")
+    for file in changed_files:
+        decision = decide_permission("agent_change", "", is_write=True, policy=policy)
+        _append_trace(run_id, {"event": "permission_decision", "action": "agent_change",
+                               "file": file, "decision": decision.decision,
+                               "reason": decision.reason})
+        permission_asks.append(f"Human approval required for agent change to {file}.")
+    rule_findings = tuple(
+        run_rules(changes, disabled_rule_ids=disabled_rules)
+        if disabled_rules else run_rules(changes)
+    )
+    if author.startswith("agent:"):
+        agents = load_agents(PROJECT_ROOT / "agents.yaml")
+        rule_findings += check_agent_files(author, changed_files, agents)
+    exceptions_path = PROJECT_ROOT / "exceptions.yaml"
+    exceptions = load_exceptions(exceptions_path)
+    rule_findings = apply_exceptions(
+        rule_findings, exceptions,
+        datetime.now(timezone(timedelta(hours=5, minutes=30))).date(),
+    )
     _append_trace(run_id, {"event": "rules_result", "changes": len(changes),
                            "finding_ids": [item.rule_id for item in rule_findings]})
     ai_findings = ()
     ai_calls = 0
     trace_steps: tuple[str, ...] = (f"checked {len(changes)} changes against deterministic rules",)
+    if author.startswith("agent:"):
+        trace_steps += (f"checked {len(changed_files)} agent files against allowed scope",)
     ask_you: tuple[str, ...] = ()
     scholar_status = "not_run"
     if scholar_mode is not None:
@@ -215,7 +314,7 @@ def run_check(
             raise ValueError('set [scholar] model = "gpt-6.1-sol" in argus.toml')
         try:
             result = research_changes(
-                changes, rule_findings,
+                changes, () if force_scholar else rule_findings,
                 documents=load_corpus(PROJECT_ROOT / "corpus"),
                 model=model, live=scholar_mode == "live", run_id=run_id,
                 cache_dir=PROJECT_ROOT / ".cache" / "scholar",
@@ -243,9 +342,12 @@ def run_check(
     # deterministic rules found no problem. Keep the final decision closed.
     scholar_incomplete = scholar_mode is not None and scholar_status != "complete"
     verdict = "NEEDS HUMAN" if scholar_incomplete else decide_verdict(rule_findings, ai_findings)
+    if permission_asks and verdict in ("GO", "GO-WITH-CONDITIONS"):
+        verdict = "NEEDS HUMAN"
     if scholar_incomplete and not ask_you:
         status_text = scholar_status.replace("_", " ")
         ask_you = (f"Scholar review did not complete ({status_text}); review this change.",)
+    ask_you += tuple(permission_asks)
     report = Report(
         verdict=verdict,
         run_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -261,20 +363,41 @@ def run_check(
     write_reports(report, report_dir)
     latest = PROJECT_ROOT / ".cache" / "last_run.json"
     latest.parent.mkdir(parents=True, exist_ok=True)
-    latest.write_text(json.dumps({
+    run_record = {
         "run_id": run_id, "plan": str(Path(plan).resolve()),
+        "run_at": report.run_at,
         "verdict": verdict, "scholar_status": scholar_status,
         "ai_calls": ai_calls, "elapsed_seconds": report.elapsed_seconds,
+        "disabled_rules": list(disabled_rules),
+        "author": author, "changed_files": list(changed_files),
+        "rule_findings": [asdict(finding) for finding in rule_findings],
         "ai_findings": [asdict(finding) for finding in ai_findings],
-    }, sort_keys=True, ensure_ascii=False), encoding="utf-8")
+    }
+    serialized = json.dumps(run_record, sort_keys=True, ensure_ascii=False)
+    runs_dir = PROJECT_ROOT / "ledger" / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    with (runs_dir / f"{run_id}.json").open("x", encoding="utf-8") as stream:
+        stream.write(serialized + "\n")
+    latest.write_text(serialized, encoding="utf-8")
     if (Path(plan).name == "act3_major_upgrade_second.json" and scholar_mode == "live"
-            and scholar_status == "complete" and ai_calls > 0):
+            and "R007" in disabled_rules and scholar_status == "complete" and ai_calls > 0):
         (PROJECT_ROOT / ".cache" / "act3_baseline.json").write_text(json.dumps({
             "run_id": run_id, "ai_calls": ai_calls,
             "elapsed_seconds": report.elapsed_seconds,
         }, sort_keys=True), encoding="utf-8")
     _append_trace(run_id, {"event": "run_end", "verdict": verdict,
                            "scholar_status": scholar_status, "ai_calls": ai_calls})
+    ledger_path = PROJECT_ROOT / "ledger" / "ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    with ledger_path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps({
+            "run_id": run_id, "time": report.run_at, "author": author,
+            "input_hash": sha256(Path(plan).read_bytes()).hexdigest(),
+            "verdict": verdict, "ai_calls": ai_calls,
+            "finding_ids": [item.rule_id for item in rule_findings]
+            + [item.id for item in ai_findings],
+        }, sort_keys=True) + "\n")
+    print(f"Run ID: {run_id}")
     print(render_terminal(report))
     if verdict == "NEEDS HUMAN":
         return 2
@@ -290,16 +413,34 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "check":
         try:
             mode = "live" if args.live else "offline" if args.offline else None
-            return run_check(args.plan, args.report_dir, scholar_mode=mode)
+            return run_check(args.plan, args.report_dir, scholar_mode=mode,
+                             disabled_rules=args.disable_rule, author=args.author,
+                             changed_files=args.changed_files)
         except (OSError, ValueError, RuntimeError) as error:
             print(f"argus check: {error}", file=sys.stderr)
             return 2
     if args.command == "compile":
         try:
-            return run_compile(args.finding_id)
+            return run_compile(args.finding_id, run_id=args.run_id,
+                               from_plan=args.from_plan)
         except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"argus compile: {error}", file=sys.stderr)
             return 2
+    if args.command == "demo" and args.scenario == "act3":
+        baseline = _baseline()
+        if not baseline:
+            print("Ask you: record act3 with --live --disable-rule R007 first.")
+            return 2
+        plan = PROJECT_ROOT / "fixtures" / "plans" / "act3_major_upgrade_second.json"
+        result = run_check(plan)
+        if result not in (0, 1):
+            return result
+        record = json.loads((PROJECT_ROOT / ".cache" / "last_run.json").read_text(encoding="utf-8"))
+        if not any(item["rule_id"] == "R007" for item in record["rule_findings"]):
+            print("Ask you: R007 did not catch act3.")
+            return 2
+        print(_comparison(baseline))
+        return 0
     if args.command == "corpus" and args.corpus_command == "fetch":
         try:
             results = fetch_corpus(args.sources, args.output_dir)

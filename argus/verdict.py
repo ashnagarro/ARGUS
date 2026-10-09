@@ -15,7 +15,8 @@ def decide_verdict(
     ai_findings: Sequence[AIFinding] = (),
 ) -> Verdict:
     """Rule findings block; verified AI findings add conditions."""
-    if any(finding.severity.lower() in _BLOCKING_SEVERITIES for finding in rule_findings):
+    if any(not finding.waived and finding.severity.lower() in _BLOCKING_SEVERITIES
+           for finding in rule_findings):
         return "NO-GO"
     if any(finding.verified for finding in ai_findings):
         return "GO-WITH-CONDITIONS"
@@ -30,7 +31,7 @@ def merge_conditions(
     conditions = [
         f"Resolve {finding.rule_id} on {finding.resource}: {finding.message}"
         for finding in rule_findings
-        if finding.severity.lower() in _BLOCKING_SEVERITIES
+        if not finding.waived and finding.severity.lower() in _BLOCKING_SEVERITIES
     ]
     conditions.extend(
         finding.recommended_action

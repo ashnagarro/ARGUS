@@ -6,6 +6,8 @@ import sys
 
 import pytest
 
+from argus import cli
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,29 +30,17 @@ def test_help_works(command: str | None) -> None:
         assert command.split()[-1] in result.stdout
 
 
-def test_read_only_corpus_tools_use_local_fixture() -> None:
-    base = [
-        sys.executable, "-m", "argus", "tool", "--corpus-dir",
-        str(ROOT / "tests" / "fixtures" / "corpus"),
-    ]
-    search = subprocess.run(
-        [*base, "search-corpus", "database replacement"],
-        cwd=ROOT, capture_output=True, text=True, check=False,
-    )
-    assert search.returncode == 0, search.stderr
-    assert "synthetic-alpha #" in search.stdout
+def test_read_only_corpus_tools_use_local_fixture(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    (tmp_path / "permissions.yaml").write_bytes((ROOT / "permissions.yaml").read_bytes())
+    base = ["tool", "--corpus-dir", str(ROOT / "tests" / "fixtures" / "corpus")]
 
-    section = subprocess.run(
-        [*base, "read-section", "synthetic-alpha", "2"],
-        cwd=ROOT, capture_output=True, text=True, check=False,
-    )
-    assert section.returncode == 0, section.stderr
-    assert "Before replacing the fictional database" in section.stdout
+    assert cli.main([*base, "search-corpus", "database replacement"]) == 0
+    assert "synthetic-alpha #" in capsys.readouterr().out
 
-    quote = subprocess.run(
-        [*base, "verify-quote", "synthetic-alpha",
-         "Before replacing the fictional database, copy its sample records to a separate test snapshot."],
-        cwd=ROOT, capture_output=True, text=True, check=False,
-    )
-    assert quote.returncode == 0, quote.stderr
-    assert "VERIFIED synthetic-alpha" in quote.stdout
+    assert cli.main([*base, "read-section", "synthetic-alpha", "2"]) == 0
+    assert "Before replacing the fictional database" in capsys.readouterr().out
+
+    assert cli.main([*base, "verify-quote", "synthetic-alpha",
+                     "Before replacing the fictional database, copy its sample records to a separate test snapshot."]) == 0
+    assert "VERIFIED synthetic-alpha" in capsys.readouterr().out

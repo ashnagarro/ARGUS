@@ -6,4 +6,5 @@ backup/
 reports/latest.md
 reports/latest.html
 ledger/traces/
+ledger/runs/
 ledger/ledger.jsonl

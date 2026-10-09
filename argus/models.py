@@ -30,6 +30,9 @@ class RuleFinding:
     message: str
     controls: tuple[str, ...] = ()
     source_doc_ids: tuple[str, ...] = ()
+    waived: bool = False
+    waiver_reason: str | None = None
+    waiver_expires: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class AIFinding:

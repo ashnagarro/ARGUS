@@ -1,0 +1,6 @@
+agents:
+  smith:
+    - argus/rules/**
+    - tests/rules/**
+  landing-zone:
+    - infra/landing-zone/**
