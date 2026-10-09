@@ -35,10 +35,18 @@ it decides GO / GO-WITH-CONDITIONS / NO-GO with evidence. Three principles:
 - Run .venv\Scripts\python -m pytest -q before saying any phase is done. Never report done with failing tests.
 - pytest exit code 5 (no tests collected) is expected until Phase 1.
 
-=== WORKING PROTOCOL ===
-- Work on ONE phase at a time. At the end of each phase:
-  1. run the tests, 2. show me a short summary (what was built, files changed, test result,
-  one command I can run to see it working), 3. commit with message "phase N: <title>",
-  4. STOP and wait for me to type "next" or "Phase N, go".
-- If something fails twice, stop and explain the problem in simple words with 2 options.
-- Do not start optional phases unless I ask.
+=== AUTOPILOT PROTOCOL ===
+- Work through phases in order. After each phase: run .venv\Scripts\python -m pytest -q,
+  commit "phase N: <title>", run git bundle create backup\argus.bundle --all,
+  then CONTINUE automatically to the next phase.
+- You have network access: install packages yourself with .venv\Scripts\python -m pip install.
+- Never print, log or commit API keys. Read them only from environment variables.
+- STOP and wait for me only when:
+  1. you finish Phase 4, Phase 7 or Phase 9 (milestones), or
+  2. the same problem fails after two different fix attempts, or
+  3. something is not covered by docs/PLAN.md, or
+  4. an action would touch anything outside this project folder, or
+  5. Phase 6 needs corpus/ documents and corpus/ is empty.
+- At each stop: phases done, test results, one command I can run to see it working,
+  and any problem in simple words with two options.
+- Never start optional phases unless I say so. Never edit corpus/. Never use --force.
