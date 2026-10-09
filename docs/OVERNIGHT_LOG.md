@@ -11,3 +11,7 @@ Two full-suite attempts failed after adding created-resource checks. The first w
 ## Task 3 — ARGUS Web
 
 Added a Python standard-library server on 127.0.0.1 with upload validation, a 5 MB limit, optional live research, six sample buttons, and escaped result pages. Uploads are redacted before saving under ignored `ledger/uploads/`; the fake password was absent from saved plans, the run record, ledger, and HTML in the integration test. Full suite: **261 passed**. `argus demo all` preserved Act 1 NO-GO, Act 2 GO-WITH-CONDITIONS, Act 3 NO-GO, and Act 5 NO-GO. The Act 7 fixed sample is labeled as unsafe until its fixture is corrected.
+
+## Task 4 — Readable names
+
+Audited terminal, report HTML, console, web, and MCP findings. The existing renderers already put generic titles ahead of detail and audit references; updated the new web result page to do the same and added an order assertion. Full suite: **262 passed**. `argus demo all` preserved the four verdicts: NO-GO, GO-WITH-CONDITIONS, NO-GO, NO-GO. No issue.

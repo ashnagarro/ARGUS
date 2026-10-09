@@ -89,10 +89,12 @@ def result_page(record: dict[str, Any]) -> bytes:
     for finding in record.get("rule_findings", []):
         if not isinstance(finding, dict):
             continue
-        label = f"{finding.get('rule_id', '')} · {finding.get('name', '')}"
+        label = f"({finding.get('rule_id', '')} · {finding.get('name', '')})"
         controls = finding.get("controls") or []
         cards.append("<article>" + f"<h3>{_e(finding.get('title', 'Finding'))}</h3>"
-                     f"<p>{_e(finding.get('message', ''))}</p><p><small>{_e(label)} · {_e(finding.get('resource', ''))}"
+                     f"<p>Resource: {_e(finding.get('resource', ''))} · "
+                     f"Trigger: {_e(finding.get('message', ''))}</p>"
+                     f"<p><small>{_e(label)}"
                      + (f" · Controls: {_e(', '.join(controls))}" if controls else "") + "</small></p>"
                      f"<p><strong>Why:</strong> {_e(finding.get('why_it_matters', ''))}</p>"
                      f"<p><strong>How to fix:</strong> {_e(finding.get('how_to_fix', ''))}</p></article>")

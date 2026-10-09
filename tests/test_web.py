@@ -66,6 +66,15 @@ def test_result_page_escapes_evidence_and_rejects_unsafe_source_links():
     assert "&lt;img&gt;" in page
 
 
+def test_web_rule_uses_title_detail_then_audit_reference():
+    record = {"verdict": "NO-GO", "run_id": "abc", "rule_findings": [{
+        "title": "Plain English risk", "message": "Concrete trigger", "resource": "resource.one",
+        "rule_id": "R123", "name": "generic-risk", "why_it_matters": "Why", "how_to_fix": "Fix",
+    }], "ai_findings": [], "conditions": [], "trace_steps": [], "ask_you": []}
+    page = result_page(record).decode()
+    assert page.index("Plain English risk") < page.index("Concrete trigger") < page.index("(R123 · generic-risk)")
+
+
 def test_loopback_server_serves_page_and_accepts_multipart(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
     server = HTTPServer(("127.0.0.1", 0), make_handler(tmp_path))
