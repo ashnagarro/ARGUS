@@ -1,0 +1,17 @@
+[scholar]
+model = "gpt-6.1-sol"
+
+[smith]
+codex_executable = "codex"
+
+[flags]
+policy_compiler = false
+cab_brief = false
+rollback = false
+compliance = false
+cost = false
+learning_report = false
+governance_pack = false
+control_coverage = false
+cloudformation_adapter = false
+team_overlays = false
