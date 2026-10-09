@@ -64,7 +64,7 @@ def test_agent_check_logs_permission_and_scope_in_test_workspace(
         changed_files=("argus/rules/r008.py",),
     ) == 2
     output = capsys.readouterr().out
-    assert "Verdict: NEEDS HUMAN" in output
+    assert "Verdict: HOLD FOR REVIEW" in output
     assert "Human approval required" in output
     record = json.loads((tmp_path / ".cache" / "last_run.json").read_text(encoding="utf-8"))
     run_id = record["run_id"]

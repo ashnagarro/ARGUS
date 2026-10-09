@@ -49,7 +49,7 @@ def test_demo_all_has_stable_verdicts_and_cached_comparison(
         )
 
     monkeypatch.setattr(scholar, "research_changes", fake_research)
-    expected = ["NO-GO", "GO-WITH-CONDITIONS", "NO-GO", "NO-GO"]
+    expected = ["NO-GO", "GO WITH CONDITIONS", "NO-GO", "NO-GO"]
     for _ in range(3):
         assert cli.main(["demo", "all"]) == 0
         output = capsys.readouterr().out

@@ -21,7 +21,7 @@ from .parse_plan import parse_plan
 from .permissions import decide_permission, load_policy
 from .report import Report, render_terminal, write_reports
 from .rules import load_rules, resolve_rule_id, run_rules
-from .verdict import decide_verdict, merge_conditions
+from .verdict import decide_verdict, merge_conditions, verdict_explanation, verdict_label
 from .verify import verify_quote
 from .warden import apply_exceptions, check_agent_files, load_agents, load_exceptions
 
@@ -619,8 +619,9 @@ def _presentation_html(cards: list[tuple[str, str, str]]) -> str:
                  "GO": "go"}.get(verdict, "needs-human")
         blocks.append(
             f'<section><h2>{escape(name.upper())}</h2>'
-            f'<p class="badge {badge}">{escape(verdict)}</p>'
-            f'<p>{escape(detail)}</p></section>'
+            f'<p class="badge {badge}">{escape(verdict_label(verdict))}</p>'
+            + (f'<p>{escape(verdict_explanation(verdict))}</p>' if verdict_explanation(verdict) else '')
+            + f'<p>{escape(detail)}</p></section>'
         )
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'

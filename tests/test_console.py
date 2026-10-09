@@ -84,7 +84,7 @@ def test_console_is_self_contained_and_redacts_secrets(tmp_path: Path, monkeypat
     assert "UniqueConsoleEnvironmentValue123" not in html
     assert "ARGUS Console" in html
     assert "2026-10-09 05:30:00 IST" in html
-    assert "GO-WITH-CONDITIONS" in html
+    assert "GO WITH CONDITIONS" in html
     title = "Data store will be destroyed and recreated"
     detail = "Resource: aws_db_instance.orders · Tool: terraform · Cloud: aws · Trigger:"
     label = "(R001 · data-store-replacement)"

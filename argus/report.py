@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 
 from .models import AIFinding, RuleFinding
+from .verdict import verdict_explanation, verdict_label
 
 
 ADVISORY_NOTICE = ("AI findings are advisory; once human-approved and compiled into a "
@@ -153,12 +154,14 @@ def render_terminal(report: Report) -> str:
     verified, unverified = _ai_groups(report)
     lines = [
         "ARGUS report",
-        f"Verdict: {_single_line(report.verdict)}",
+        f"Verdict: {_single_line(verdict_label(report.verdict))}",
         f"Run at: {_single_line(report.run_at)}",
         f"Elapsed: {report.elapsed_seconds:.2f} seconds",
         f"AI calls: {_ai_calls_text(report)}",
         f"Rules matched: {_rule_summary(report)}",
     ]
+    if verdict_explanation(report.verdict):
+        lines.insert(2, verdict_explanation(report.verdict))
     if report.ai_findings:
         lines.append(ADVISORY_NOTICE)
     lines.extend(["", "RULE"])
@@ -236,12 +239,14 @@ def render_markdown(report: Report) -> str:
     lines = [
         "# ARGUS report",
         "",
-        f"**Verdict:** {_markdown_text(report.verdict)}",
+        f"**Verdict:** {_markdown_text(verdict_label(report.verdict))}",
         f"**Run at:** {_markdown_text(report.run_at)}",
         f"**Elapsed:** {report.elapsed_seconds:.2f} seconds",
         f"**AI calls:** {_markdown_text(_ai_calls_text(report))}",
         f"**Rules matched:** {_markdown_text(_rule_summary(report))}",
     ]
+    if verdict_explanation(report.verdict):
+        lines.insert(3, _markdown_text(verdict_explanation(report.verdict)))
     if report.ai_findings:
         lines.extend(["", _markdown_text(ADVISORY_NOTICE)])
     lines.extend(["", "## RULE", ""])
@@ -437,8 +442,9 @@ def render_html(report: Report) -> str:
         ".advisory{font-weight:700;border-left:6px solid #9a5a00;padding:.7rem 1rem;background:#fff4df}"
         "</style>\n</head>\n<body>\n<main>\n"
         "<h1>ARGUS report</h1>\n"
-        f"<div class=\"banner {banner}\"><strong>Verdict:</strong> {_html_text(report.verdict)}</div>"
-        f"<p><strong>Run at:</strong> {_html_text(_local_time(report.run_at))}<br>"
+        f"<div class=\"banner {banner}\"><strong>Verdict:</strong> {_html_text(verdict_label(report.verdict))}</div>"
+        + (f"<p>{_html_text(verdict_explanation(report.verdict))}</p>" if verdict_explanation(report.verdict) else "")
+        + f"<p><strong>Run at:</strong> {_html_text(_local_time(report.run_at))}<br>"
         f"<strong>Elapsed:</strong> {report.elapsed_seconds:.2f} seconds<br>"
         f"<strong>AI calls:</strong> {_html_text(_ai_calls_text(report))}<br>"
         f"<strong>Rules matched:</strong> {_html_text(_rule_summary(report))}</p>\n"

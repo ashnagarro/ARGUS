@@ -19,10 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_home_controls_and_rejects_nonplans(monkeypatch):
     disabled = home_page(live_available=False).decode()
     enabled = home_page(live_available=True).decode()
-    assert "Use AI research (live)" in disabled and " disabled" in disabled
-    assert "Use AI research (live)" in enabled and " disabled" not in enabled
-    assert all(f"/sample/{sample}" in disabled for sample in
-               ("act1", "act2", "act3", "act5", "act7-risky", "act7-fixed"))
+    assert "Research with AI (sends the redacted change to OpenAI)" in disabled and " disabled" in disabled
+    assert "Research with AI (sends the redacted change to OpenAI)" in enabled and " disabled" not in enabled
+    assert "Samples" not in disabled and "/sample/" not in disabled
     with pytest.raises(ValueError, match="Terraform plan"):
         _plan(b'{"hello":"world"}')
     with pytest.raises(ValueError, match="5 MB"):

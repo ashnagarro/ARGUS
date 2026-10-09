@@ -21,7 +21,7 @@ Keep credentials in environment variables. `OPENAI_API_KEY` is needed only for `
 | CAB brief, rollback notes, compliance mapping, cost delta, learning report, control coverage, CloudFormation adapter | Prototype / roadmap | Their flags are disabled in `argus.toml` |
 | Act 7 real-plan comparison | Prototype / roadmap | The supplied fixed fixture has the same risky resource settings; the attempted Act 7 task was reverted after two failed test gates |
 
-The web page accepts Terraform plan JSON up to 5 MB, stores a redacted copy in ignored `ledger/uploads/`, and enables live AI research only when `OPENAI_API_KEY` is set. Its six sample buttons include both Act 7 fixtures; the fixed button is labeled with the current fixture limitation.
+The web page accepts Terraform plan JSON up to 5 MB, stores a redacted copy in ignored `ledger/uploads/`, and enables live AI research only when `OPENAI_API_KEY` is set. Its upload form lets you identify whether a person or an AI agent made the change.
 
 ## Review a plan
 
@@ -30,7 +30,7 @@ The web page accepts Terraform plan JSON up to 5 MB, stores a redacted copy in i
 .\.venv\Scripts\python -m argus check fixtures\plans\act3_major_upgrade_second.json
 ```
 
-`--offline` replays an exact cached Scholar answer without an API call. `--live` calls the API. Every check prints a run ID, writes `ledger/runs/<run_id>.json`, appends a trace in `ledger/traces/`, and refreshes `reports/latest.md` and `reports/latest.html`. `NEEDS HUMAN` exits with code 2; `NO-GO` exits with code 1.
+`--offline` replays an exact cached Scholar answer without an API call. `--live` calls the API. Every check prints a run ID, writes `ledger/runs/<run_id>.json`, appends a trace in `ledger/traces/`, and refreshes `reports/latest.md` and `reports/latest.html`. **HOLD FOR REVIEW** exits with code 2; `NO-GO` exits with code 1. The requested machine-readable token is `NEEDS_HUMAN`; existing JSON records retain their legacy `NEEDS HUMAN` value.
 
 To compile a verified finding, run `argus compile F1 --run <run_id>` or `argus compile F1 --from <plan>`. Smith asks for human approval before its write attempts, runs tests, checks file scope, and records the result. A compiled rule is enforced on later checks.
 

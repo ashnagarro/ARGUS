@@ -16,6 +16,7 @@ from .models import RuleFinding
 from .report import finding_detail, finding_label
 from .rules import load_rules, resolve_rule_id
 from .warden import W001_APPLIES_TO, W001_ID, W001_NAME, W001_TITLE
+from .verdict import verdict_explanation, verdict_label
 
 
 PROJECT_ROOT = cli.PROJECT_ROOT
@@ -100,6 +101,8 @@ def argus_check(plan_path: str, live: bool = False) -> dict:
         _log_call("argus_check", run_id=run_id, status="completed")
         return {
             "verdict": record["verdict"],
+            "verdict_label": verdict_label(record["verdict"]),
+            "verdict_explanation": verdict_explanation(record["verdict"]),
             "findings": [_display_finding(item) for item in
                          record["rule_findings"] + record["ai_findings"]],
             "conditions": record["conditions"],

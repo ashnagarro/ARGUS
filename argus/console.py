@@ -13,6 +13,7 @@ from urllib.parse import quote, urlsplit
 from .corpus import load_corpus
 from .report import _local_time
 from .rules import load_rules
+from .verdict import verdict_explanation, verdict_label
 from .warden import W001_NAME, W001_TITLE
 
 
@@ -264,7 +265,7 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
 
     totals = [
         ("Runs", len(runs)), ("NO-GO", sum(item.get("verdict") == "NO-GO" for item in runs)),
-        ("GO-WITH-CONDITIONS", sum(item.get("verdict") == "GO-WITH-CONDITIONS" for item in runs)),
+        (verdict_label("GO-WITH-CONDITIONS"), sum(item.get("verdict") == "GO-WITH-CONDITIONS" for item in runs)),
         ("GO", sum(item.get("verdict") == "GO" for item in runs)),
         ("Learned rules", len(learned)), ("AI calls avoided", avoided),
     ]
@@ -287,7 +288,9 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
         rows.append(
             f'<tr id="run-{index}"><td>{_safe(_local_time(str(record.get("run_at", ""))))}</td>'
             f'<td><button type="button" data-target="{target}" aria-expanded="false">{_safe(plan)}</button></td>'
-            f'<td><span class="badge {badge}">{_safe(verdict)}</span></td>'
+            f'<td><span class="badge {badge}">{_safe(verdict_label(verdict))}</span>'
+            + (f'<p class="verdict-note">{_safe(verdict_explanation(verdict))}</p>'
+               if verdict_explanation(verdict) else '') + '</td>'
             f'<td>{_safe(record.get("author", "human"))}</td>'
             f'<td>{replay_calls}</td>'
             f'<td>{float(record.get("elapsed_seconds", 0)):.2f}</td></tr>'
@@ -342,7 +345,7 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         '<title>ARGUS Console</title><style>'
-        'body{font:20px/1.45 system-ui,sans-serif;color:#17212b;background:#f3f6f8;'
+        'body{font:16px/1.55 system-ui,sans-serif;color:#17212b;background:#f3f6f8;'
         'margin:0 auto;max-width:1500px;padding:1.5rem}h1{font-size:3rem;margin:.2rem 0}'
         'h2{font-size:2rem}h3{font-size:1.4rem}.metrics{display:grid;'
         'grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:.7rem;margin:1.5rem 0}'
@@ -351,15 +354,15 @@ def write_console(root: Path, *, include_archives: bool = False) -> Path:
         'table{border-collapse:collapse;width:100%;background:white}th,td{border:1px solid #ccd7df;'
         'padding:.7rem;text-align:left;vertical-align:top}th{background:#e2eaf0}section{margin:2rem 0}'
         'button{font:inherit;color:#064f78;background:none;border:0;text-decoration:underline;cursor:pointer}'
-        '.badge{display:inline-block;padding:.2rem .5rem;border-radius:.35rem;color:white;font-weight:800}'
+        '.badge{display:block;padding:.7rem 1rem;border-radius:.6rem;color:white;font-size:1.2rem;font-weight:800}'
         '.no-go{background:#a11825}.conditions{background:#9a5a00}.go{background:#176833}'
-        '.needs-human{background:#70479a}.detail-row td{background:#f9fbfd}'
+        '.needs-human{background:#70479a}.detail-row td{background:#f9fbfd}.verdict-note{font-size:.85rem;color:#526677}'
         '.timeline{border-left:4px solid #2c678a;padding-left:1.5rem}.timeline li{margin:.7rem 0}'
         '.timeline span{font-weight:800}blockquote{border-left:4px solid #9a5a00;padding-left:1rem}'
         '.finding-detail{margin:.25rem 0;color:#34485e}.rule-ref{font-size:.75em;color:#526677}'
         'footer{border-top:2px solid #ccd7df;margin-top:2rem;padding-top:1rem}'
-        '</style></head><body><header><h1>ARGUS Console</h1>'
-        '<p>Evidence-backed safety gate for Terraform and agent-written infrastructure changes.</p></header>'
+        '</style></head><body><header><h1>ARGUS</h1>'
+        '<p>Evidence-backed safety gate for infrastructure changes</p></header>'
         f'<div class="metrics">{metric_html}</div>'
         f'<section><h2>Runs — {"all sessions" if include_archives else "latest session"}</h2>'
         '<table><thead><tr><th>Time (IST)</th><th>Plan</th>'

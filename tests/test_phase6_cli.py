@@ -59,7 +59,7 @@ def test_verified_scholar_finding_reaches_report_and_last_run(
 
     assert code == 0
     report = (report_dir / "latest.md").read_text(encoding="utf-8")
-    assert "GO-WITH-CONDITIONS" in report
+    assert "GO WITH CONDITIONS" in report
     assert "AI calls:** 2" in report
     assert "AI-SYNTHETIC" in report
     assert "Choose a compatible test group." in report
@@ -92,11 +92,11 @@ def test_scholar_needs_human_is_not_a_successful_check(tmp_path: Path, monkeypat
     assert code == 2
     report = (tmp_path / "reports" / "latest.md").read_text(encoding="utf-8")
     assert "No cached answer; review the change." in report
-    assert "**Verdict:** NEEDS HUMAN" in report
+    assert "**Verdict:** HOLD FOR REVIEW" in report
     assert "Provisional verdict" not in report
     assert "**Verdict:** GO" not in report
-    assert "Verdict: NEEDS HUMAN" in capsys.readouterr().out
-    assert "Verdict:</strong> NEEDS HUMAN" in (
+    assert "Verdict: HOLD FOR REVIEW" in capsys.readouterr().out
+    assert "Verdict:</strong> HOLD FOR REVIEW" in (
         tmp_path / "reports" / "latest.html"
     ).read_text(encoding="utf-8")
     last = json.loads((tmp_path / ".cache" / "last_run.json").read_text(encoding="utf-8"))
@@ -121,7 +121,7 @@ def test_incomplete_scholar_without_reason_still_fails_closed(tmp_path: Path, mo
 
     assert code == 2
     report = (tmp_path / "reports" / "latest.md").read_text(encoding="utf-8")
-    assert "**Verdict:** NEEDS HUMAN" in report
+    assert "**Verdict:** HOLD FOR REVIEW" in report
     assert "Scholar review did not complete (needs human)" in report
 
 
@@ -146,5 +146,5 @@ def test_scholar_exception_writes_needs_human_report(tmp_path: Path, monkeypatch
 
     assert code == 2
     report = (tmp_path / "reports" / "latest.md").read_text(encoding="utf-8")
-    assert "**Verdict:** NEEDS HUMAN" in report
+    assert "**Verdict:** HOLD FOR REVIEW" in report
     assert "argus.toml" in report
