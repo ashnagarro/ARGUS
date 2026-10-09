@@ -42,7 +42,8 @@ def _append_trace(run_id: str, event: dict) -> None:
 
 
 def _settings() -> dict:
-    return tomllib.loads((PROJECT_ROOT / "argus.toml").read_text(encoding="utf-8"))
+    path = PROJECT_ROOT / "argus.toml"
+    return tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -69,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--author", default="human", help="Change author, such as agent:smith.")
     check.add_argument("--changed-files", nargs="+", default=[], metavar="PATH",
                        help="Project-relative files changed by an agent.")
+    check.add_argument("--ticket", help="Change ticket for governance review.")
+    check.add_argument("--approver", help="Human approver identity for governance review.")
+    check.add_argument("--tf-file", action="append", type=Path, default=[], metavar="PATH",
+                       help="Terraform source file to scan for literal secrets (repeatable).")
 
     compile_command = commands.add_parser(
         "compile", help="Compile an approved finding into a rule."
@@ -279,6 +284,10 @@ def run_check(
     force_scholar: bool = False,
     author: str = "human",
     changed_files: Sequence[str] = (),
+    ticket: str | None = None,
+    approver: str | None = None,
+    tf_files: Sequence[Path] = (),
+    governance_enabled: bool | None = None,
     write_artifacts: bool = True,
     emit_output: bool = True,
     check_agent_scope: bool = True,
@@ -290,7 +299,11 @@ def run_check(
     run_id = run_id or uuid4().hex
     if not _RUN_ID.fullmatch(run_id):
         raise ValueError("invalid run ID")
-    unknown = set(disabled_rules) - {rule.id for rule in load_rules()}
+    settings = _settings()
+    flags = settings.get("flags", {})
+    include_governance = (isinstance(flags, dict) and flags.get("governance_pack") is True
+                          if governance_enabled is None else governance_enabled)
+    unknown = set(disabled_rules) - {rule.id for rule in load_rules(include_governance=include_governance)}
     if unknown:
         raise ValueError(f"unknown rule ID: {', '.join(sorted(unknown))}")
     _append_trace(run_id, {"event": "run_start", "mode": scholar_mode or "rules",
@@ -316,10 +329,23 @@ def run_check(
                                "file": file, "decision": decision.decision,
                                "reason": decision.reason})
         permission_asks.append(f"Human approval required for agent change to {file}.")
-    rule_findings = tuple(
-        run_rules(changes, disabled_rule_ids=disabled_rules)
-        if disabled_rules else run_rules(changes)
-    )
+    if include_governance:
+        from .governance import context_from_settings
+
+        source_files = tuple(dict.fromkeys((*(Path(plan).parent.glob("*.tf")), *tf_files)))
+        context = context_from_settings(
+            settings, ticket=ticket, author=author, approver=approver,
+            tf_files=source_files, ledger_recorded=True,
+        )
+        rule_findings = tuple(run_rules(
+            changes, disabled_rule_ids=disabled_rules, include_governance=True,
+            governance_context=context, controls_path=PROJECT_ROOT / "controls.yaml",
+        ))
+    else:
+        rule_findings = tuple(
+            run_rules(changes, disabled_rule_ids=disabled_rules)
+            if disabled_rules else run_rules(changes)
+        )
     if author.startswith("agent:") and check_agent_scope:
         agents = load_agents(PROJECT_ROOT / "agents.yaml")
         rule_findings += check_agent_files(author, changed_files, agents)
@@ -420,6 +446,7 @@ def run_check(
         "original_elapsed_seconds": original_elapsed_seconds,
         "disabled_rules": list(disabled_rules),
         "author": author, "changed_files": list(changed_files),
+        "ticket": ticket, "approver": approver,
         "rule_findings": [asdict(finding) for finding in rule_findings],
         "ai_findings": [asdict(finding) for finding in ai_findings],
         "conditions": list(report.conditions),
@@ -501,7 +528,7 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
     for name in scenarios:
         print(f"\n=== {name.upper()} ===")
         if name == "act1":
-            code = run_check(plans / "act1_replace_pii_db.json")
+            code = run_check(plans / "act1_replace_pii_db.json", governance_enabled=False)
             if code != 1:
                 print("Ask you: act1 did not produce the expected NO-GO verdict.")
                 return 2
@@ -511,6 +538,7 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
                 plans / "act2_major_upgrade.json",
                 scholar_mode="live" if live else "offline",
                 disabled_rules=("R007",),
+                governance_enabled=False,
             )
             if code == 2:
                 return 2
@@ -523,14 +551,15 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
         elif name == "act3":
             plan = plans / "act3_major_upgrade_second.json"
             if live:
-                before_code = run_check(plan, scholar_mode="live", disabled_rules=("R007",))
+                before_code = run_check(plan, scholar_mode="live", disabled_rules=("R007",),
+                                        governance_enabled=False)
                 if before_code == 2:
                     return 2
             baseline = _baseline()
             if not baseline:
                 print("Ask you: record act3 with --live --disable-rule R007 first.")
                 return 2
-            code = run_check(plan)
+            code = run_check(plan, governance_enabled=False)
             if code != 1:
                 print("Ask you: act3 did not produce the expected R007 NO-GO verdict.")
                 return 2
@@ -544,6 +573,7 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
             code = run_check(
                 plans / "act5_agent_landing_zone.json", author="agent:landing-zone",
                 changed_files=("argus/rules/r007.py",),
+                governance_enabled=False,
             )
             if code != 1:
                 print("Ask you: Warden did not block the out-of-scope agent file.")
@@ -588,7 +618,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             mode = "live" if args.live else "offline" if args.offline else None
             return run_check(args.plan, args.report_dir, scholar_mode=mode,
                              disabled_rules=args.disable_rule, author=args.author,
-                             changed_files=args.changed_files)
+                             changed_files=args.changed_files, ticket=args.ticket,
+                             approver=args.approver, tf_files=args.tf_file)
         except (OSError, ValueError, RuntimeError) as error:
             print(f"argus check: {error}", file=sys.stderr)
             return 2

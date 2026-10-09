@@ -1,0 +1,25 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "resource_changes": [
+    {"address":"aws_db_instance.synthetic_public","type":"aws_db_instance","change":{"actions":["update"],"before":{"publicly_accessible":false,"tags":{"env":"prod","owner":"synthetic-team"}},"after":{"publicly_accessible":true,"region":"synthetic-west","instance_class":"db.synthetic.large","tags":{"env":"prod","owner":"synthetic-team"}}}},
+    {"address":"aws_s3_bucket_public_access_block.synthetic","type":"aws_s3_bucket_public_access_block","change":{"actions":["update"],"before":{"block_public_policy":true},"after":{"block_public_policy":false}}},
+    {"address":"aws_s3_bucket_policy.synthetic","type":"aws_s3_bucket_policy","change":{"actions":["create"],"before":null,"after":{"policy":"{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::synthetic/*\"}]}"}}},
+    {"address":"aws_s3_bucket_server_side_encryption_configuration.synthetic","type":"aws_s3_bucket_server_side_encryption_configuration","change":{"actions":["delete"],"before":{"bucket":"synthetic"},"after":null}},
+    {"address":"aws_ebs_volume.synthetic","type":"aws_ebs_volume","change":{"actions":["create"],"before":null,"after":{"encrypted":false,"tags":{"data_classification":"synthetic-confidential","owner":"synthetic-team"}}}},
+    {"address":"aws_kms_key.synthetic","type":"aws_kms_key","change":{"actions":["update"],"before":{"enable_key_rotation":true},"after":{"enable_key_rotation":false}}},
+    {"address":"aws_iam_policy.synthetic","type":"aws_iam_policy","change":{"actions":["create"],"before":null,"after":{"policy":"{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"}}},
+    {"address":"aws_iam_access_key.synthetic","type":"aws_iam_access_key","change":{"actions":["create"],"before":null,"after":{"user":"synthetic-user"}}},
+    {"address":"aws_iam_user_policy_attachment.synthetic","type":"aws_iam_user_policy_attachment","change":{"actions":["create"],"before":null,"after":{"user":"synthetic-user","policy_arn":"arn:aws:iam::aws:policy/AdministratorAccess"}}},
+    {"address":"aws_iam_role.synthetic","type":"aws_iam_role","change":{"actions":["create"],"before":null,"after":{"assume_role_policy":"{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"AWS\":\"*\"}}]}"}}},
+    {"address":"aws_security_group_rule.synthetic_ssh","type":"aws_security_group_rule","change":{"actions":["create"],"before":null,"after":{"type":"ingress","protocol":"tcp","from_port":22,"to_port":22,"cidr_blocks":["0.0.0.0/0"]}}},
+    {"address":"aws_cloudtrail.synthetic","type":"aws_cloudtrail","change":{"actions":["update"],"before":{"enable_logging":true},"after":{"enable_logging":false}}},
+    {"address":"aws_flow_log.synthetic","type":"aws_flow_log","change":{"actions":["delete"],"before":{"vpc_id":"vpc-synthetic"},"after":null}},
+    {"address":"aws_guardduty_detector.synthetic","type":"aws_guardduty_detector","change":{"actions":["update"],"before":{"enable":true},"after":{"enable":false}}},
+    {"address":"aws_config_configuration_recorder_status.synthetic","type":"aws_config_configuration_recorder_status","change":{"actions":["update"],"before":{"is_enabled":true},"after":{"is_enabled":false}}},
+    {"address":"aws_cloudwatch_log_group.synthetic","type":"aws_cloudwatch_log_group","change":{"actions":["update"],"before":{"retention_in_days":30},"after":{"retention_in_days":1}}},
+    {"address":"aws_db_instance.synthetic_az","type":"aws_db_instance","change":{"actions":["update"],"before":{"multi_az":true,"tags":{"env":"prod"}},"after":{"multi_az":false,"tags":{"env":"prod"}}}},
+    {"address":"aws_s3_bucket_versioning.synthetic","type":"aws_s3_bucket_versioning","change":{"actions":["update"],"before":{"versioning_configuration":[{"status":"Enabled"}]},"after":{"versioning_configuration":[{"status":"Suspended"}]}}},
+    {"address":"aws_backup_plan.synthetic","type":"aws_backup_plan","change":{"actions":["update"],"before":{"rule":[{"rule_name":"synthetic-daily"}]},"after":{"rule":[]}}}
+  ]
+}

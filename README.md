@@ -44,6 +44,12 @@ The console writes `reports/console.html` from saved run records, traces, the le
 
 Run `.\.venv\Scripts\python -m argus ledger archive` before a new demo session. It moves the current `ledger.jsonl`, `runs/`, and `traces/` into `ledger/archive/<timestamp>/` without deleting them. The console footer lists archived sessions and shows optional features under “Works now” or “Prototype / roadmap” according to `argus.toml` flags.
 
+## Governance rule pack
+
+The `governance_pack` flag enables G01–G26 and G28–G29 for normal checks. Each rule has a positive and negative synthetic test. `controls.yaml` maps rule IDs to ARGUS internal control labels; it does not assert a legal or certification mapping. Organization-specific `required_tags`, `approved_regions`, `allowed_instance_classes`, and `minimum_retention_days` can be set under `[governance]` in `argus.toml`. An empty list or omitted retention minimum leaves that particular policy unset.
+
+Use `--ticket` for a production change, `--approver` to record a distinct human reviewer, and repeat `--tf-file` for Terraform files that need a literal-secret scan. The canonical four-act `argus demo all` stays on its baseline rules; `argus check fixtures\plans\act6_governance_sweep.json --ticket SYNTH-1` exercises the governance pack with synthetic violations.
+
 ## Codex MCP plugin
 
 Register the local MCP server using [docs/CODEX_PLUGIN.md](docs/CODEX_PLUGIN.md). Its two tools check project-local plan JSON and explain saved findings. MCP calls write only ledger records. The synthetic Terraform workflow is in [examples/agent-demo](examples/agent-demo/AGENTS.md).

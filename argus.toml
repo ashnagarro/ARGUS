@@ -12,7 +12,13 @@ rollback = false
 compliance = false
 cost = false
 learning_report = false
-governance_pack = false
+governance_pack = true
 control_coverage = false
 cloudformation_adapter = false
 team_overlays = false
+
+[governance]
+# Empty lists leave organization-specific thresholds unset until configured.
+required_tags = []
+approved_regions = []
+allowed_instance_classes = []
