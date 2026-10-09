@@ -58,8 +58,11 @@ def test_demo_all_has_stable_verdicts_and_cached_comparison(
         assert ("AI advice (act2) -> learned, enforced rule (act3): "
                 "13 AI calls / 42.51 s -> 0 AI calls / 0.00 s") in output
         assert "Warden blocked agent:landing-zone: argus/rules/r007.py is outside" in output
-        assert "Active exception: WAIVED" in output
-        assert "Expired exception: NO-GO" in output
+        assert "Step 1: checked 1 change against deterministic rules" in output
+        assert "Step 2: checked 1 agent file against allowed scope" in output
+        assert "Exception simulation date: 2026-10-09" in output
+        assert "Active exception: WAIVED until 2026-12-31" in output
+        assert "Expired exception: NO-GO on 2026-10-01" in output
 
     assert cli.main(["demo", "--present"]) == 0
     presentation = (tmp_path / "reports" / "presentation.html").read_text(encoding="utf-8")

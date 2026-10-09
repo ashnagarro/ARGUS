@@ -3,7 +3,7 @@
 import argparse
 from collections.abc import Sequence
 from dataclasses import asdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 from html import escape
 import json
@@ -28,6 +28,10 @@ from .warden import apply_exceptions, check_agent_files, load_agents, load_excep
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _RUN_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _counted(count: int, singular: str) -> str:
+    return f"{count} {singular if count == 1 else singular + 's'}"
 
 
 def _append_trace(run_id: str, event: dict) -> None:
@@ -314,9 +318,11 @@ def run_check(
                            "finding_ids": [item.rule_id for item in rule_findings]})
     ai_findings = ()
     ai_calls = 0
-    trace_steps: tuple[str, ...] = (f"checked {len(changes)} changes against deterministic rules",)
+    trace_steps: tuple[str, ...] = (
+        f"checked {_counted(len(changes), 'change')} against deterministic rules",
+    )
     if author.startswith("agent:") and check_agent_scope:
-        trace_steps += (f"checked {len(changed_files)} agent files against allowed scope",)
+        trace_steps += (f"checked {_counted(len(changed_files), 'agent file')} against allowed scope",)
     ask_you: tuple[str, ...] = ()
     scholar_status = "not_run"
     if scholar_mode is not None:
@@ -516,16 +522,18 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
                 return 2
             print("Warden blocked agent:landing-zone: argus/rules/r007.py is outside its "
                   "allowed infra/landing-zone/** scope.")
-            today = datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
-            exception = ({
+            simulated_date = date(2026, 10, 9)
+            active_exception = ({
                 "rule_id": "W001", "resource": warden.resource,
                 "owner": "synthetic-team", "reason": "demo approval",
-                "ticket": "DEMO-1", "expires": (today + timedelta(days=1)).isoformat(),
+                "ticket": "DEMO-1", "expires": "2026-12-31",
             },)
-            active = apply_exceptions((warden,), exception, today)[0]
-            expired = apply_exceptions((warden,), exception, today + timedelta(days=2))[0]
-            print(f"Active exception: {'WAIVED' if active.waived else 'NO-GO'} until {exception[0]['expires']}")
-            print(f"Expired exception: {'NO-GO' if not expired.waived else 'WAIVED'} — {expired.message}")
+            expired_exception = ({**active_exception[0], "expires": "2026-10-01"},)
+            active = apply_exceptions((warden,), active_exception, simulated_date)[0]
+            expired = apply_exceptions((warden,), expired_exception, simulated_date)[0]
+            print(f"Exception simulation date: {simulated_date.isoformat()}")
+            print(f"Active exception: {'WAIVED' if active.waived else 'NO-GO'} until {active_exception[0]['expires']}")
+            print(f"Expired exception: {'NO-GO' if not expired.waived else 'WAIVED'} on {expired_exception[0]['expires']} — {expired.message}")
             cards.append((name, record["verdict"],
                           "Agent landing-zone changed argus/rules/r007.py outside its approved scope; "
                           "an expired exception blocks it again."))

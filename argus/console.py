@@ -96,7 +96,8 @@ def _timeline(root: Path, record: dict) -> str:
             elif kind == "cache_replay":
                 description = f"Replayed cached response for {event.get('resource')}"
             elif kind == "rules_result":
-                description = f"Checked {event.get('changes')} changes against deterministic rules"
+                count = event.get("changes")
+                description = f"Checked {count} {'change' if count == 1 else 'changes'} against deterministic rules"
             elif kind == "verified_answer_stop":
                 description = "Stopped Scholar after a verified final answer"
             else:
