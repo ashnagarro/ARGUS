@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from argus.models import Change
+from argus.redaction import redact_value
 
 
 _CANONICAL_TYPES = {
@@ -75,8 +76,10 @@ def parse_plan(source: str | Path | Mapping[str, Any]) -> list[Change]:
         actions = tuple(raw_actions)
         if actions == ("no-op",):
             continue
-        before = _state(change.get("before"), "before", address)
-        after = _state(change.get("after"), "after", address)
+        before_raw = _state(change.get("before"), "before", address)
+        after_raw = _state(change.get("after"), "after", address)
+        before = redact_value(before_raw, change.get("before_sensitive"))
+        after = redact_value(after_raw, change.get("after_sensitive"))
         raw_paths = change.get("replace_paths") or []
         if not isinstance(raw_paths, list) or not all(isinstance(path, list) for path in raw_paths):
             raise ValueError(f"{address}: replace_paths must be a list of paths")
