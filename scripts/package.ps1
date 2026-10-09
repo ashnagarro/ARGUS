@@ -13,7 +13,7 @@ if ($LASTEXITCODE -ne 0 -or -not [string]::Equals(
 $outputDir = Join-Path $projectRoot 'dist'
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 $archivePath = Join-Path $outputDir 'argus-demo.zip'
-& git -C $projectRoot archive --format=zip "--output=$archivePath" HEAD
+& git -C $projectRoot archive --format=zip "--output=$archivePath" HEAD -- . ':(exclude)ledger/**'
 if ($LASTEXITCODE -ne 0) {
     throw 'git archive failed.'
 }
