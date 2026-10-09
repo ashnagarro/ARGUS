@@ -41,6 +41,10 @@ The offline demo covers stateful replacement, sourced AI advice, an enforced lea
 
 The console writes `reports/console.html` from saved run records, traces, the learned-rule ledger, and the cached act3 baseline. It is one self-contained page with no server or CDN. The generated page shows the run history, evidence, permission timeline, learned rules, and measured before/after values.
 
+## Codex MCP plugin
+
+Register the local MCP server using [docs/CODEX_PLUGIN.md](docs/CODEX_PLUGIN.md). Its two tools check project-local plan JSON and explain saved findings. MCP calls write only ledger records. The synthetic Terraform workflow is in [examples/agent-demo](examples/agent-demo/AGENTS.md).
+
 ## Corpus and packaging
 
 `argus corpus fetch` mechanically extracts public reference text into `corpus/`. Do not hand-edit those files. `scripts/package.ps1` creates `dist/argus-demo.zip` from committed files only, so ignored caches, ledgers, keys, and virtual environments stay out of the package.

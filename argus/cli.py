@@ -260,6 +260,9 @@ def run_check(
     force_scholar: bool = False,
     author: str = "human",
     changed_files: Sequence[str] = (),
+    write_artifacts: bool = True,
+    emit_output: bool = True,
+    check_agent_scope: bool = True,
 ) -> int:
     """Run rules and optionally research uncovered changes with Scholar."""
     if report_dir == Path("reports"):
@@ -274,7 +277,7 @@ def run_check(
     _append_trace(run_id, {"event": "run_start", "mode": scholar_mode or "rules",
                            "disabled_rules": list(disabled_rules)})
     changes = parse_plan(plan)
-    if author.startswith("agent:") and not changed_files:
+    if author.startswith("agent:") and not changed_files and check_agent_scope:
         raise ValueError("--changed-files is required for an agent author")
     if changed_files and not author.startswith("agent:"):
         raise ValueError("--changed-files requires --author agent:<name>")
@@ -298,7 +301,7 @@ def run_check(
         run_rules(changes, disabled_rule_ids=disabled_rules)
         if disabled_rules else run_rules(changes)
     )
-    if author.startswith("agent:"):
+    if author.startswith("agent:") and check_agent_scope:
         agents = load_agents(PROJECT_ROOT / "agents.yaml")
         rule_findings += check_agent_files(author, changed_files, agents)
     exceptions_path = PROJECT_ROOT / "exceptions.yaml"
@@ -312,7 +315,7 @@ def run_check(
     ai_findings = ()
     ai_calls = 0
     trace_steps: tuple[str, ...] = (f"checked {len(changes)} changes against deterministic rules",)
-    if author.startswith("agent:"):
+    if author.startswith("agent:") and check_agent_scope:
         trace_steps += (f"checked {len(changed_files)} agent files against allowed scope",)
     ask_you: tuple[str, ...] = ()
     scholar_status = "not_run"
@@ -331,6 +334,7 @@ def run_check(
                 trace_dir=PROJECT_ROOT / "ledger" / "traces",
                 permissions_path=PROJECT_ROOT / "permissions.yaml",
                 schema_path=PROJECT_ROOT / "schemas" / "finding.schema.json",
+                cache_live_responses=write_artifacts,
             )
         except Exception as error:
             scholar_status = "needs_human"
@@ -370,9 +374,9 @@ def run_check(
         ask_you=ask_you,
         review_status=scholar_status,
     )
-    write_reports(report, report_dir)
+    if write_artifacts:
+        write_reports(report, report_dir)
     latest = PROJECT_ROOT / ".cache" / "last_run.json"
-    latest.parent.mkdir(parents=True, exist_ok=True)
     run_record = {
         "run_id": run_id, "plan": str(Path(plan).resolve()),
         "run_at": report.run_at,
@@ -391,8 +395,10 @@ def run_check(
     runs_dir.mkdir(parents=True, exist_ok=True)
     with (runs_dir / f"{run_id}.json").open("x", encoding="utf-8") as stream:
         stream.write(serialized + "\n")
-    latest.write_text(serialized, encoding="utf-8")
-    if (Path(plan).name == "act3_major_upgrade_second.json" and scholar_mode == "live"
+    if write_artifacts:
+        latest.parent.mkdir(parents=True, exist_ok=True)
+        latest.write_text(serialized, encoding="utf-8")
+    if (write_artifacts and Path(plan).name == "act3_major_upgrade_second.json" and scholar_mode == "live"
             and "R007" in disabled_rules and scholar_status == "complete" and ai_calls > 0):
         (PROJECT_ROOT / ".cache" / "act3_baseline.json").write_text(json.dumps({
             "run_id": run_id, "ai_calls": ai_calls,
@@ -410,8 +416,9 @@ def run_check(
             "finding_ids": [item.rule_id for item in rule_findings]
             + [item.id for item in ai_findings],
         }, sort_keys=True) + "\n")
-    print(f"Run ID: {run_id}")
-    print(render_terminal(report))
+    if emit_output:
+        print(f"Run ID: {run_id}")
+        print(render_terminal(report))
     if verdict == "NEEDS HUMAN":
         return 2
     if verdict == "NO-GO":

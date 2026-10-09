@@ -17,8 +17,9 @@ it decides GO / GO-WITH-CONDITIONS / NO-GO with evidence. Three principles:
    ZERO AI calls. ARGUS also checks changes written by AI agents (Warden) using the same rules.
 
 === HARD RULES (never break) ===
-- Python standard library plus pytest, jsonschema, beautifulsoup4, and the official openai
-  package for Scholar in Phase 6. No web frameworks, databases, vector stores or agent frameworks.
+- Python standard library plus pytest, jsonschema, beautifulsoup4, the official openai
+  package for Scholar, and the official mcp Python SDK for Phase 20. No additional web
+  frameworks, databases, vector stores or agent frameworks.
 - Always run Python as .venv\Scripts\python (for example: .venv\Scripts\python -m pytest -q).
 - All test data is fake. Never use real customer data, real names or real AWS account IDs.
 - Never invent numbers, prices, quotes or documentation text. If data is missing, say so.

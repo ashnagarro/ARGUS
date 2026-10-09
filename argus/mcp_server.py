@@ -1,0 +1,127 @@
+"""Codex MCP tools for ledger-backed ARGUS reviews (stdio transport)."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+from uuid import uuid4
+
+from mcp.server import MCPServer
+
+from . import cli
+from .corpus import load_corpus
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+mcp = MCPServer("ARGUS", description="Evidence-backed infrastructure plan safety gate")
+
+
+def _log_call(tool: str, *, run_id: str, status: str) -> None:
+    """Record a tool invocation without user input or environment values."""
+    path = PROJECT_ROOT / "ledger" / "ledger.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    event = {
+        "event": "mcp_call", "tool": tool, "run_id": run_id,
+        "author": "agent:codex", "status": status,
+        "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(event, sort_keys=True) + "\n")
+
+
+def _run_records() -> list[dict]:
+    directory = PROJECT_ROOT / "ledger" / "runs"
+    if not directory.is_dir():
+        return []
+    records = []
+    for path in directory.glob("*.json"):
+        try:
+            records.append(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    return sorted(records, key=lambda record: record.get("run_at", ""), reverse=True)
+
+
+@mcp.tool()
+def argus_check(plan_path: str, live: bool = False) -> dict:
+    """Review a project-local Terraform plan and save the decision in the ledger."""
+    run_id = uuid4().hex
+    try:
+        plan = Path(plan_path)
+        if not plan.is_absolute():
+            plan = PROJECT_ROOT / plan
+        plan = plan.resolve()
+        if not plan.is_relative_to(PROJECT_ROOT.resolve()):
+            raise ValueError("plan_path must stay inside the ARGUS project")
+        if not plan.is_file() or plan.suffix.lower() != ".json":
+            raise ValueError("plan_path must name an existing JSON file")
+        _log_call("argus_check", run_id=run_id, status="started")
+        cli.run_check(plan, scholar_mode="live" if live else None, run_id=run_id,
+                      author="agent:codex", changed_files=(),
+                      write_artifacts=False, emit_output=False, check_agent_scope=False)
+        record = json.loads((PROJECT_ROOT / "ledger" / "runs" / f"{run_id}.json").read_text(encoding="utf-8"))
+        _log_call("argus_check", run_id=run_id, status="completed")
+        return {
+            "verdict": record["verdict"],
+            "findings": record["rule_findings"] + record["ai_findings"],
+            "conditions": record["conditions"],
+            "run_id": run_id,
+        }
+    except Exception:
+        _log_call("argus_check", run_id=run_id, status="failed")
+        raise
+
+
+@mcp.tool()
+def argus_explain(finding_id: str) -> dict:
+    """Explain a saved rule or Scholar finding with its available evidence."""
+    call_id = uuid4().hex
+    try:
+        selected = None
+        for record in _run_records():
+            selected = next((item for item in record.get("rule_findings", [])
+                             if item.get("rule_id") == finding_id), None)
+            if selected is None:
+                selected = next((item for item in record.get("ai_findings", [])
+                                 if item.get("id") == finding_id), None)
+            if selected is not None:
+                break
+        if selected is None:
+            raise ValueError(f"finding {finding_id} was not found in ledger/runs")
+        evidence = list(selected.get("evidence") or [])
+        source_id = selected.get("source_finding_id")
+        if not evidence and source_id:
+            for record in _run_records():
+                source = next((item for item in record.get("ai_findings", [])
+                               if item.get("id") == source_id and item.get("verified")), None)
+                if source:
+                    evidence = list(source.get("evidence") or [])
+                    break
+        if not evidence:
+            documents = load_corpus(PROJECT_ROOT / "corpus")
+            for doc_id in selected.get("source_doc_ids", []):
+                document = documents.get(doc_id)
+                if document:
+                    evidence.append({"doc_id": doc_id, "url": document.url,
+                                     "retrieved_at": document.retrieved_at})
+        result = {
+            "finding_id": finding_id,
+            "why": selected.get("why_it_matters") or selected.get("claim") or selected.get("message", ""),
+            "how_to_fix": selected.get("how_to_fix") or selected.get("recommended_action", ""),
+            "evidence": evidence,
+        }
+        _log_call("argus_explain", run_id=call_id, status="completed")
+        return result
+    except Exception:
+        _log_call("argus_explain", run_id=call_id, status="failed")
+        raise
+
+
+def main() -> None:
+    """Run the official SDK's stdio transport; stdout belongs to MCP."""
+    mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()

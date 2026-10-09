@@ -216,6 +216,17 @@ Done when: running demo all 3 times gives identical verdicts.
 - Footer separates "Works now" from "Prototype / roadmap". Use projector-readable type.
   Never include API keys or environment values; test the HTML for secret patterns and values.
 
+=== PHASE 20: Codex plugin (MCP server) ===
+- Use the installed official Python MCP SDK's documented API in `argus/mcp_server.py`.
+  Expose `argus_check(plan_path, live=false)` returning verdict, findings, conditions, run_id;
+  and `argus_explain(finding_id)` returning why, how to fix, and evidence.
+- MCP calls are logged with author `agent:codex`. They write only the ledger run and trace entries;
+  tests mock the MCP transport and never call a live model.
+- `docs/CODEX_PLUGIN.md` shows the Codex `config.toml` stdio registration block and test steps.
+- `examples/agent-demo/` contains fake-credential, create-only Terraform examples for a SQL Server
+  database and a public 1433 security-group rule, plus an AGENTS.md requiring `argus_check`
+  before finishing a Terraform change and forbidding bypass after a NO-GO.
+
 === OPTIONAL PHASES (only when I ask) ===
 10 Policy from English: python -m argus policy "<sentence>" compiles a plain-English policy into
    a rule + tests using the Phase 7 method. Flag policy_compiler.

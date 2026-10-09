@@ -2,3 +2,4 @@ pytest
 jsonschema
 beautifulsoup4
 openai
+mcp>=2,<3

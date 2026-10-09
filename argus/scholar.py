@@ -138,6 +138,7 @@ def research_changes(
     permissions_path: Path = Path("permissions.yaml"),
     schema_path: Path = Path("schemas/finding.schema.json"),
     approval_callback: Callable[[str, str], bool] | None = None,
+    cache_live_responses: bool = True,
 ) -> ScholarResult:
     """Research only changes not already caught by a deterministic rule.
 
@@ -196,7 +197,7 @@ def research_changes(
                 append_trace(trace_path, {"event": "cache_replay_failed", "resource": change.address})
                 continue
             raise
-        if live and result.status == "complete":
+        if live and cache_live_responses and result.status == "complete":
             _write_cache(cache_path, result.response_records)
         ai_calls += result.ai_calls
         steps.extend(result.trace_steps)
