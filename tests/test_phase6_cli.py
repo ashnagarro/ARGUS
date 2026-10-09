@@ -84,10 +84,57 @@ def test_scholar_needs_human_is_not_a_successful_check(tmp_path: Path, monkeypat
     assert code == 2
     report = (tmp_path / "reports" / "latest.md").read_text(encoding="utf-8")
     assert "No cached answer; review the change." in report
-    assert "**Decision status:** NEEDS HUMAN" in report
-    assert "**Provisional verdict:** GO" in report
+    assert "**Verdict:** NEEDS HUMAN" in report
+    assert "Provisional verdict" not in report
     assert "**Verdict:** GO" not in report
-    assert "Decision status: NEEDS HUMAN" in capsys.readouterr().out
-    assert "Decision status:</strong> NEEDS HUMAN" in (
+    assert "Verdict: NEEDS HUMAN" in capsys.readouterr().out
+    assert "Verdict:</strong> NEEDS HUMAN" in (
         tmp_path / "reports" / "latest.html"
     ).read_text(encoding="utf-8")
+    last = json.loads((tmp_path / ".cache" / "last_run.json").read_text(encoding="utf-8"))
+    assert last["verdict"] == "NEEDS HUMAN"
+
+
+def test_incomplete_scholar_without_reason_still_fails_closed(tmp_path: Path, monkeypatch) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (tmp_path / "argus.toml").write_text('[scholar]\nmodel = "gpt-6.1-sol"\n', encoding="utf-8")
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(scholar, "research_changes", lambda *args, **kwargs: scholar.ScholarResult(
+        findings=(), ai_calls=1, elapsed_seconds=0.0, trace_steps=(),
+        ask_you=(), status="needs_human", run_id=kwargs["run_id"],
+    ))
+
+    code = cli.run_check(
+        ROOT / "fixtures" / "plans" / "act2_major_upgrade.json",
+        tmp_path / "reports", scholar_mode="live",
+    )
+
+    assert code == 2
+    report = (tmp_path / "reports" / "latest.md").read_text(encoding="utf-8")
+    assert "**Verdict:** NEEDS HUMAN" in report
+    assert "Scholar review did not complete (needs human)" in report
+
+
+def test_scholar_exception_writes_needs_human_report(tmp_path: Path, monkeypatch) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (tmp_path / "argus.toml").write_text('[scholar]\nmodel = "gpt-6.1-sol"\n', encoding="utf-8")
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+
+    def failing_research(*args, **kwargs):
+        raise scholar.ScholarModelUnavailable(
+            "Scholar model is unavailable. Change the `model = ...` line under `[scholar]` in argus.toml."
+        )
+
+    monkeypatch.setattr(scholar, "research_changes", failing_research)
+
+    code = cli.run_check(
+        ROOT / "fixtures" / "plans" / "act2_major_upgrade.json",
+        tmp_path / "reports", scholar_mode="live",
+    )
+
+    assert code == 2
+    report = (tmp_path / "reports" / "latest.md").read_text(encoding="utf-8")
+    assert "**Verdict:** NEEDS HUMAN" in report
+    assert "argus.toml" in report

@@ -206,26 +206,44 @@ def run_check(
     ask_you: tuple[str, ...] = ()
     scholar_status = "not_run"
     if scholar_mode is not None:
-        from .scholar import research_changes
+        from .scholar import ScholarModelUnavailable, research_changes
 
         model = _settings().get("scholar", {}).get("model", "gpt-6.1-sol")
         if not isinstance(model, str) or not model.strip():
             raise ValueError('set [scholar] model = "gpt-6.1-sol" in argus.toml')
-        result = research_changes(
-            changes, rule_findings,
-            documents=load_corpus(PROJECT_ROOT / "corpus"),
-            model=model, live=scholar_mode == "live", run_id=run_id,
-            cache_dir=PROJECT_ROOT / ".cache" / "scholar",
-            trace_dir=PROJECT_ROOT / "ledger" / "traces",
-            permissions_path=PROJECT_ROOT / "permissions.yaml",
-            schema_path=PROJECT_ROOT / "schemas" / "finding.schema.json",
-        )
-        ai_findings = tuple(result.findings)
-        ai_calls = result.ai_calls
-        trace_steps += tuple(result.trace_steps)
-        ask_you = tuple(result.ask_you)
-        scholar_status = result.status
-    verdict = decide_verdict(rule_findings, ai_findings)
+        try:
+            result = research_changes(
+                changes, rule_findings,
+                documents=load_corpus(PROJECT_ROOT / "corpus"),
+                model=model, live=scholar_mode == "live", run_id=run_id,
+                cache_dir=PROJECT_ROOT / ".cache" / "scholar",
+                trace_dir=PROJECT_ROOT / "ledger" / "traces",
+                permissions_path=PROJECT_ROOT / "permissions.yaml",
+                schema_path=PROJECT_ROOT / "schemas" / "finding.schema.json",
+            )
+        except Exception as error:
+            scholar_status = "needs_human"
+            error_type = type(error).__name__
+            _append_trace(run_id, {"event": "scholar_failed", "error_type": error_type})
+            if isinstance(error, ScholarModelUnavailable):
+                ask_you = (str(error),)
+            elif isinstance(error, RuntimeError) and str(error) == "OPENAI_API_KEY is required for --live Scholar research.":
+                ask_you = ("OPENAI_API_KEY is required for --live Scholar research.",)
+            else:
+                ask_you = (f"Scholar stopped before completing the review ({error_type}); review this change.",)
+        else:
+            ai_findings = tuple(result.findings)
+            ai_calls = result.ai_calls
+            trace_steps += tuple(result.trace_steps)
+            ask_you = tuple(result.ask_you)
+            scholar_status = result.status
+    # A partial Scholar review cannot authorize a merge, even when the
+    # deterministic rules found no problem. Keep the final decision closed.
+    scholar_incomplete = scholar_mode is not None and scholar_status != "complete"
+    verdict = "NEEDS HUMAN" if scholar_incomplete else decide_verdict(rule_findings, ai_findings)
+    if scholar_incomplete and not ask_you:
+        status_text = scholar_status.replace("_", " ")
+        ask_you = (f"Scholar review did not complete ({status_text}); review this change.",)
     report = Report(
         verdict=verdict,
         run_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -256,9 +274,11 @@ def run_check(
     _append_trace(run_id, {"event": "run_end", "verdict": verdict,
                            "scholar_status": scholar_status, "ai_calls": ai_calls})
     print(render_terminal(report))
+    if verdict == "NEEDS HUMAN":
+        return 2
     if verdict == "NO-GO":
         return 1
-    return 2 if scholar_status == "needs_human" else 0
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:

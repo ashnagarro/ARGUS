@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import jsonschema
 import pytest
 
-from argus.agent_loop import _redact_keys, run_agent_loop
+from argus.agent_loop import _redact_keys, _safe_error_text, run_agent_loop
 from argus.corpus import load_corpus
 from argus.models import Change, RuleFinding
 from argus.permissions import decide_permission, load_policy
@@ -174,7 +174,7 @@ def test_time_budget_and_invalid_answer_need_human(tmp_path: Path) -> None:
     assert "invalid finding format" in result.ask_you[0]
 
 
-def test_offline_cache_miss_and_model_error_are_clear(tmp_path: Path) -> None:
+def test_offline_cache_miss_and_model_error_are_clear(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     common = dict(
         changes=[_change()], rule_findings=[], documents=load_corpus(FIXTURES),
         trace_dir=tmp_path / "traces", cache_dir=tmp_path / "cache",
@@ -198,6 +198,7 @@ def test_offline_cache_miss_and_model_error_are_clear(tmp_path: Path) -> None:
         def create(self, **_: object) -> None:
             raise RuntimeError("synthetic-secret-in-error")
 
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-secret-in-error")
     failed = research_changes(
         **common, live=True, client=SimpleNamespace(responses=ServiceErrorResponses()),
         run_id="api-failed",
@@ -205,18 +206,27 @@ def test_offline_cache_miss_and_model_error_are_clear(tmp_path: Path) -> None:
     assert failed.status == "needs_human"
     assert failed.ai_calls == 1
     assert "synthetic-secret-in-error" not in (tmp_path / "traces" / "api-failed.jsonl").read_text(encoding="utf-8")
-    assert "client request failed before a response" in failed.ask_you[0]
+    assert "[REDACTED]" in failed.ask_you[0]
+    assert "synthetic-secret-in-error" not in failed.ask_you[0]
 
 
 @pytest.mark.parametrize("status", [400, 401, 429])
 def test_live_http_error_reports_safe_status_without_secret(tmp_path: Path, status: int) -> None:
     class StatusResponses:
         def create(self, **_: object) -> None:
-            error = RuntimeError("synthetic-secret-in-error-message")
+            error = RuntimeError("Invalid request; sk-proj-syntheticsecret123")
             error.status_code = status
             error.type = "syntheticsecretwithoutpunctuation"
             error.code = "syntheticsecretwithoutpunctuation"
             error.param = "syntheticsecretwithoutpunctuation"
+            if status == 400:
+                error.body = {
+                    "error": {
+                        "message": "Invalid schema at findings",
+                        "type": "invalid_request_error",
+                        "api_key": "syntheticsecretwithoutpunctuation",
+                    }
+                }
             raise error
 
     result = research_changes(
@@ -230,11 +240,62 @@ def test_live_http_error_reports_safe_status_without_secret(tmp_path: Path, stat
     assert f"HTTP {status}" in result.ask_you[0]
     trace = (tmp_path / "traces" / f"http-{status}.jsonl").read_text(encoding="utf-8")
     assert '"event": "api_error"' in trace
+    assert '"error_type": "RuntimeError"' in trace
     assert f'"status_code": {status}' in trace
-    assert "synthetic-secret" not in trace
+    assert "sk-proj-syntheticsecret123" not in trace
     assert "syntheticsecretwithoutpunctuation" not in trace
-    assert "synthetic-secret" not in result.ask_you[0]
+    assert "API message: Invalid request" in result.ask_you[0]
+    assert "sk-proj-syntheticsecret123" not in result.ask_you[0]
     assert "syntheticsecretwithoutpunctuation" not in result.ask_you[0]
+    if status == 400:
+        assert "API body:" in result.ask_you[0]
+        assert "Invalid schema at findings" in trace
+        assert '"api_error_type": "invalid_request_error"' in trace
+        assert '"api_key\\\": \\\"[REDACTED]' in trace
+
+
+def test_openai_bad_request_exposes_redacted_body_and_sdk_type(tmp_path: Path) -> None:
+    import httpx2
+    from openai import BadRequestError
+
+    request = httpx2.Request("POST", "https://api.openai.com/v1/responses")
+    response = httpx2.Response(400, request=request)
+    error = BadRequestError(
+        "Invalid schema in response_format; sk-proj-syntheticsecret123",
+        response=response,
+        body={"error": {"message": "Every property must be required", "api_key": "othersecret"}},
+    )
+
+    class BadRequestResponses:
+        def create(self, **_: object) -> None:
+            raise error
+
+    result = research_changes(
+        [_change()], [], documents=load_corpus(FIXTURES), live=True,
+        client=SimpleNamespace(responses=BadRequestResponses()), run_id="sdk-bad-request",
+        trace_dir=tmp_path / "traces", cache_dir=tmp_path / "cache",
+        permissions_path=POLICY, schema_path=SCHEMA,
+    )
+
+    assert result.status == "needs_human"
+    assert "HTTP 400; BadRequestError" in result.ask_you[0]
+    assert "Every property must be required" in result.ask_you[0]
+    trace = (tmp_path / "traces" / "sdk-bad-request.jsonl").read_text(encoding="utf-8")
+    assert '"error_type": "BadRequestError"' in trace
+    assert "sk-proj-syntheticsecret123" not in trace + result.ask_you[0]
+    assert "othersecret" not in trace + result.ask_you[0]
+
+
+def test_raw_json_error_body_and_bearer_token_are_redacted() -> None:
+    body = '{"error": {"key": "arbitrarysecret", "message": "Bearer anothersecret; sk-proj-…abcd"}}'
+    safe = _safe_error_text(body)
+    assert safe is not None
+    assert "arbitrarysecret" not in safe
+    assert "anothersecret" not in safe
+    assert "sk-proj-…abcd" not in safe
+    assert "[REDACTED]" in safe
+    sdk_message = "Error code: 400 - {'error': {'api_key': 'arbitrarysecret', 'message': 'bad schema'}}"
+    assert "arbitrarysecret" not in _safe_error_text(sdk_message)
 
 
 def test_permission_policy_is_fail_closed_and_cache_redacts_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 from time import perf_counter
 from typing import Any, Callable, Mapping
 
@@ -75,13 +76,33 @@ class AgentLoopResult:
     response_records: tuple[dict[str, Any], ...]
 
 
-def _redact_keys(value: str) -> str:
-    """Keep environment-only credentials out of trace and cache files."""
+_KEY_LIKE = re.compile(r"(?i)(?<![A-Za-z0-9_-])(?:sk|rk|pk|sess)[-_][A-Za-z0-9_.*…-]{4,}")
+_BEARER = re.compile(r"(?i)\bBearer\s+[^\s\"']+")
+_SENSITIVE_FIELD = re.compile(r"(?i)(?:api[_-]?key|authorization|access[_-]?token|secret|password|^key$|^token$)")
+_SENSITIVE_ASSIGNMENT = re.compile(
+    r"(?i)((?<![A-Za-z0-9_])['\"]?(?:api[_-]?key|authorization|access[_-]?token|secret|password|key|token)['\"]?\s*[:=]\s*)"
+    r"(?:\"[^\"]*\"|'[^']*'|[^\s,;}\]]+)"
+)
+_KNOWN_API_ERROR_TYPES = frozenset({
+    "invalid_request_error", "authentication_error", "permission_error",
+    "rate_limit_error", "server_error", "insufficient_quota",
+})
+
+
+def _redact_sensitive_text(value: str) -> str:
+    """Remove active credentials and recognizable key fragments from diagnostics."""
     for name in ("OPENAI_API_KEY", "CODEX_API_KEY"):
         secret = os.environ.get(name)
         if secret:
             value = value.replace(secret, "[REDACTED]")
-    return value
+    value = _KEY_LIKE.sub("[REDACTED]", value)
+    value = _BEARER.sub("Bearer [REDACTED]", value)
+    return _SENSITIVE_ASSIGNMENT.sub(r'\1"[REDACTED]"', value)
+
+
+def _redact_keys(value: str) -> str:
+    """Keep credentials out of trace and cache files."""
+    return _redact_sensitive_text(value)
 
 
 def append_trace(path: Path, event: Mapping[str, Any]) -> None:
@@ -121,8 +142,39 @@ def is_model_unavailable(error: BaseException) -> bool:
     return code == "model_not_found" or status == 404
 
 
+def _redact_error_fields(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: "[REDACTED]" if _SENSITIVE_FIELD.search(str(key)) else _redact_error_fields(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_error_fields(item) for item in value]
+    return value
+
+
+def _safe_error_text(value: Any, *, limit: int = 4096) -> str | None:
+    """Convert API diagnostics to bounded text, redacting before truncation."""
+    if value is None:
+        return None
+    try:
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except (ValueError, TypeError):
+                raw = value
+            else:
+                raw = json.dumps(_redact_error_fields(decoded), ensure_ascii=False, sort_keys=True)
+        else:
+            raw = json.dumps(_redact_error_fields(value), ensure_ascii=False, sort_keys=True, default=str)
+    except Exception:
+        return "<unavailable>"
+    clean = _redact_sensitive_text(raw)
+    return clean[:limit] + ("...[truncated]" if len(clean) > limit else "")
+
+
 def _api_error_details(error: BaseException) -> dict[str, str | int]:
-    """Return fixed diagnostic metadata without server-supplied text."""
+    """Return a redacted API diagnostic for traces and the human review report."""
     details: dict[str, str | int] = {}
     status = getattr(error, "status_code", None)
     if isinstance(error, APITimeoutError):
@@ -135,20 +187,45 @@ def _api_error_details(error: BaseException) -> dict[str, str | int]:
         details["category"] = "unexpected"
     if type(status) is int and 100 <= status <= 599:
         details["status_code"] = status
+    details["error_type"] = _safe_error_text(type(error).__name__, limit=80) or "unknown"
+    message = _safe_error_text(getattr(error, "message", None) or str(error))
+    if message:
+        details["message"] = message
+    body = getattr(error, "body", None)
+    if body is None:
+        response = getattr(error, "response", None)
+        if response is not None:
+            try:
+                body = response.text
+            except Exception:
+                body = None
+    api_type = getattr(error, "type", None)
+    if not (isinstance(api_type, str) and api_type in _KNOWN_API_ERROR_TYPES) and isinstance(body, dict):
+        nested = body.get("error")
+        if isinstance(nested, dict):
+            api_type = nested.get("type")
+    if isinstance(api_type, str) and api_type in _KNOWN_API_ERROR_TYPES:
+        details["api_error_type"] = api_type
+    safe_body = _safe_error_text(body)
+    if safe_body:
+        details["body"] = safe_body
     return details
 
 
 def _api_error_summary(details: Mapping[str, str | int]) -> str:
-    """Give the user an actionable category without exposing server text."""
+    """Show the redacted API reason without presenting an incomplete verdict as safe."""
     category = details["category"]
     if category == "timeout":
         return "Scholar API timed out; review this change."
     if category == "connection":
         return "Scholar could not connect to the OpenAI API; review this change."
-    if category == "api_status":
-        status = f"HTTP {details['status_code']}" if "status_code" in details else "HTTP error"
-        return f"Scholar API request failed ({status}); review this change."
-    return "Scholar client request failed before a response; review this change."
+    status = f"HTTP {details['status_code']}" if "status_code" in details else "no HTTP response"
+    reason = f"Scholar API request failed ({status}; {details['error_type']})."
+    if details.get("message"):
+        reason += f" API message: {details['message']}"
+    if details.get("body"):
+        reason += f" API body: {details['body']}"
+    return reason + " Review this change."
 
 
 def _execute_tool(
