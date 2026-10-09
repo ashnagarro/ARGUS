@@ -16,8 +16,9 @@ Keep credentials in environment variables. `OPENAI_API_KEY` is needed only for `
 
 | Feature | State | Configuration |
 | --- | --- | --- |
-| Terraform plan checks, secret redaction, five-act demo, ledger archive, offline console, MCP tools, local web upload | Works now | Core commands; `python -m argus serve --port 8765` binds to 127.0.0.1 |
+| Terraform plan checks, secret redaction, six-act demo, ledger archive, offline console, MCP tools, local web upload | Works now | Core commands; `python -m argus serve --port 8765` binds to 127.0.0.1 |
 | AWS provider 4.x to 5.x upgrade check | Works now for explicit argument changes in the fetched guide | `argus upgrade-check`; see [Act 8 status](docs/ACT8_STATUS.md) |
+| SQL Server cross-Region replica restore review | Works with live Scholar research and verified AWS documentation | `argus check fixtures/plans/act9_cross_region_replica.json --live`; see [Act 9 result](docs/ACT8_STATUS.md#act-9-result) |
 | Policy from English, governance rule pack, team overlays | Works now | `policy_compiler`, `governance_pack`, `team_overlays` are enabled in `argus.toml` |
 | CAB brief, rollback notes, compliance mapping, cost delta, learning report, control coverage, CloudFormation adapter | Prototype / roadmap | Their flags are disabled in `argus.toml` |
 | Act 7 real-plan comparison | Prototype / roadmap | The supplied fixed fixture has the same risky resource settings; the attempted Act 7 task was reverted after two failed test gates |
@@ -52,7 +53,7 @@ This uses the existing `CODEX_API_KEY` and `[smith]` settings. Smith asks for ap
 .\.venv\Scripts\python -m argus demo --present
 ```
 
-The offline demo covers stateful replacement, sourced AI advice, an enforced learned rule, an out-of-scope agent change, and a provider upgrade breaking a configured argument. `--present` writes a self-contained projector page at `reports/presentation.html`. To record a new act3 before baseline in a PowerShell session with `OPENAI_API_KEY` set, run `argus check fixtures\plans\act3_major_upgrade_second.json --live --disable-rule R007` through the virtual-environment Python executable.
+The offline demo covers stateful replacement, sourced AI advice, an enforced learned rule, an out-of-scope agent change, a provider upgrade breaking a configured argument, and a SQL Server cross-Region replica restore limitation. The Act 8 and Act 9 offline demo answers are synthetic replays of exact local vendor quotes. `--present` writes a self-contained projector page at `reports/presentation.html`. To record a new act3 before baseline in a PowerShell session with `OPENAI_API_KEY` set, run `argus check fixtures\plans\act3_major_upgrade_second.json --live --disable-rule R007` through the virtual-environment Python executable.
 
 ## Offline console
 

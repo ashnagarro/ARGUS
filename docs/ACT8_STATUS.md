@@ -27,3 +27,16 @@ For the live command, set `OPENAI_API_KEY` in the process environment first. The
 ```powershell
 .\.venv\Scripts\python -m argus upgrade-check fixtures\upgrades\aws_v4_to_v5\plan.json --provider aws --lock-before path\to\before\.terraform.lock.hcl --lock-after path\to\after\.terraform.lock.hcl --live
 ```
+
+## Act 9 result
+
+- Fetched the AWS SQL Server read-replica and BYOM pages with `argus corpus fetch`. The local replica guide contains the exact native-restore restriction for a SQL Server source with cross-Region replicas.
+- The synthetic plan has an existing SQL Server Enterprise source, an option group with `SQLSERVER_BACKUP_RESTORE`, and a new replica using a second-Region provider alias. The plan parser attaches the source, option group, and Region context to the replica change for Scholar. It adds no deterministic restore rule.
+- A real `--live` check on 2026-10-10 returned `GO-WITH-CONDITIONS` with one **VERIFIED** finding citing two exact sentences from `rds-sqlserver-read-replicas`, seven AI calls, and no rule finding (run `d39c8549748349f4ab4a743139b28e2b`). The finding says native restores on the source are blocked until all cross-Region replicas are deleted, and active native restore tasks are cancelled during replica creation.
+- `argus demo all` shows Act 9 after Act 8. Its fresh offline demonstration uses a clearly synthetic Scholar replay with the exact fetched quote. A normal `argus check --offline` needs a prior matching live response cache. The finding is advisory until someone approves and compiles a tested rule.
+
+Exact live command from the project root, with `OPENAI_API_KEY` set in the process environment:
+
+```powershell
+.\.venv\Scripts\python -m argus check fixtures\plans\act9_cross_region_replica.json --live
+```

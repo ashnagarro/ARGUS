@@ -14,3 +14,7 @@
   url: https://developer.hashicorp.com/terraform/internals/json-format
 - doc_id: terraform-aws-provider-v5-upgrade
   url: https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/main/website/docs/guides/version-5-upgrade.html.markdown
+- doc_id: rds-sqlserver-read-replicas
+  url: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/SQLServer.ReadReplicas.html
+- doc_id: rds-sqlserver-byom
+  url: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/sqlserver-byom.html

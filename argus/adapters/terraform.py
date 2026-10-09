@@ -1,6 +1,7 @@
 """Adapt Terraform ``show -json`` plans to provider-neutral changes."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -95,4 +96,85 @@ def parse_plan(source: str | Path | Mapping[str, Any]) -> list[Change]:
             tags=_tags(before, after),
             is_replace="delete" in actions and "create" in actions,
         ))
-    return changes
+    return _with_replica_source_context(changes, plan, resource_changes)
+
+
+def _with_replica_source_context(
+    changes: list[Change], plan: Mapping[str, Any], resource_changes: list[Any],
+) -> list[Change]:
+    """Give replica reviews the source and option group facts from the same plan."""
+    states: dict[str, dict[str, Any]] = {}
+    for item in resource_changes:
+        if not isinstance(item, dict) or not isinstance(item.get("change"), dict):
+            continue
+        state = item["change"].get("after") or item["change"].get("before")
+        if isinstance(state, dict) and isinstance(item.get("address"), str):
+            states[item["address"]] = state
+    configuration = plan.get("configuration")
+    if not isinstance(configuration, dict):
+        configuration = {}
+    provider_configs = configuration.get("provider_config") or {}
+    if not isinstance(provider_configs, dict):
+        provider_configs = {}
+    root_module = configuration.get("root_module") or {}
+    if not isinstance(root_module, dict):
+        root_module = {}
+    configured_resources = root_module.get("resources") or []
+    if not isinstance(configured_resources, list):
+        configured_resources = []
+    provider_keys = {
+        item["address"]: item.get("provider_config_key")
+        for item in configured_resources
+        if isinstance(item, dict) and isinstance(item.get("address"), str)
+    }
+
+    def region(address: str) -> str | None:
+        provider = provider_configs.get(provider_keys.get(address))
+        if not isinstance(provider, dict):
+            return None
+        expression = (provider.get("expressions") or {}).get("region") or {}
+        value = expression.get("constant_value") if isinstance(expression, dict) else None
+        return value if isinstance(value, str) else None
+
+    enriched = []
+    for change in changes:
+        after = change.after
+        if (change.resource_type != "aws_db_instance" or not isinstance(after, dict)
+                or not isinstance(after.get("replicate_source_db"), str)):
+            enriched.append(change)
+            continue
+        source_id = after["replicate_source_db"]
+        source = next((
+            (address, state) for address, state in states.items()
+            if address != change.address and isinstance(state.get("identifier"), str)
+            and (state["identifier"] == source_id
+                 or source_id.endswith(":db:" + state["identifier"]))
+            and state.get("engine") == "sqlserver-ee"
+        ), None)
+        if source is None:
+            enriched.append(change)
+            continue
+        source_address, source_state = source
+        option_group_name = source_state.get("option_group_name")
+        option_names = sorted({
+            option["option_name"]
+            for state in states.values()
+            if state.get("name") == option_group_name
+            for option in (state.get("option") if isinstance(state.get("option"), list) else [])
+            if isinstance(option, dict) and isinstance(option.get("option_name"), str)
+        })
+        context = {
+            "address": source_address,
+            "engine": source_state["engine"],
+            "identifier": source_state["identifier"],
+            "option_group_name": option_group_name,
+            "option_group_options": option_names,
+            "region": region(source_address),
+        }
+        replica_region = region(change.address)
+        enriched.append(replace(change, after={
+            **after, "source_instance": context, "replica_region": replica_region,
+            "cross_region": bool(context["region"] and replica_region
+                                 and context["region"] != replica_region),
+        }))
+    return enriched

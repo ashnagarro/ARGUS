@@ -26,6 +26,7 @@ from .verify import verify_quote
 from .warden import apply_exceptions, check_agent_files, load_agents, load_exceptions
 from .upgrade import (GUIDE_ID, UpgradeSpec, collect_upgrade_changes,
                       filter_upgrade_findings, resolve_upgrade, seed_demo_replay)
+from .act9 import REPLICA_DOC_IDS, seed_replica_demo_replay
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -121,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument(
         "scenario",
         nargs="?",
-        choices=("all", "act1", "act2", "act3", "act5", "act8"),
+        choices=("all", "act1", "act2", "act3", "act5", "act8", "act9"),
         help="Scenario to run.",
     )
     demo_mode = demo.add_mutually_exclusive_group()
@@ -367,6 +368,7 @@ def run_check(
     emit_output: bool = True,
     check_agent_scope: bool = True,
     upgrade: UpgradeSpec | None = None,
+    research_doc_ids: Sequence[str] | None = None,
 ) -> int:
     """Run rules and optionally research uncovered changes with Scholar."""
     if report_dir == Path("reports"):
@@ -523,7 +525,9 @@ def run_check(
                 changes, () if force_scholar else rule_findings,
                 documents={GUIDE_ID: guide} if upgrade is not None and guide is not None
                           else {doc_id: document for doc_id, document in
-                                load_corpus(PROJECT_ROOT / "corpus").items() if doc_id != GUIDE_ID},
+                                load_corpus(PROJECT_ROOT / "corpus").items()
+                                if doc_id != GUIDE_ID and
+                                (research_doc_ids is None or doc_id in research_doc_ids)},
                 model=model, live=scholar_mode == "live", run_id=run_id,
                 cache_dir=PROJECT_ROOT / ".cache" / "scholar",
                 trace_dir=PROJECT_ROOT / "ledger" / "traces",
@@ -673,8 +677,8 @@ def _presentation_html(cards: list[tuple[str, str, str]]) -> str:
 
 
 def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False) -> int:
-    """Show the four planned scenarios with an offline replay by default."""
-    scenarios = ("act1", "act2", "act3", "act5", "act8") if scenario == "all" else (scenario,)
+    """Show the planned scenarios with an offline replay by default."""
+    scenarios = ("act1", "act2", "act3", "act5", "act8", "act9") if scenario == "all" else (scenario,)
     plans = PROJECT_ROOT / "fixtures" / "plans"
     cards: list[tuple[str, str, str]] = []
     for name in scenarios:
@@ -693,6 +697,11 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
                 disabled_rules=("R007",),
                 governance_enabled=False,
                 team_enabled=False,
+                research_doc_ids=(
+                    "rds-sqlserver-upgrade", "rds-sqlserver-upgrade-considerations",
+                    "rds-parameter-groups", "rds-option-groups", "rds-share-snapshot",
+                    "tf-aws-db-instance", "tf-json-format",
+                ),
             )
             if code == 2:
                 return 2
@@ -777,6 +786,35 @@ def run_demo(scenario: str = "all", *, live: bool = False, present: bool = False
                 return 2
             cards.append((name, "NO-GO", "AWS provider v5 removes a configured database argument; "
                           "the local vendor guide supplies the verified quote."))
+        elif name == "act9":
+            plan = plans / "act9_cross_region_replica.json"
+            documents = load_corpus(PROJECT_ROOT / "corpus")
+            replica_docs = {doc_id: documents[doc_id] for doc_id in REPLICA_DOC_IDS
+                            if doc_id in documents}
+            if len(replica_docs) != len(REPLICA_DOC_IDS):
+                print("Ask you: fetch the SQL Server replica and BYOM guides first.")
+                return 2
+            if not live:
+                seed_replica_demo_replay(
+                    parse_plan(plan), replica_docs,
+                    model=_settings().get("scholar", {}).get("model", "gpt-6.1-sol"),
+                    schema_path=_asset_path("schemas/finding.schema.json"),
+                    cache_dir=PROJECT_ROOT / ".cache" / "scholar",
+                )
+            code = run_check(
+                plan, scholar_mode="live" if live else "offline",
+                governance_enabled=False, team_enabled=False,
+                research_doc_ids=REPLICA_DOC_IDS,
+            )
+            if code == 2:
+                return 2
+            record = json.loads((PROJECT_ROOT / ".cache" / "last_run.json").read_text(encoding="utf-8"))
+            if not any(item["verified"] for item in record["ai_findings"]):
+                print("Ask you: Act 9 did not produce a verified restore limitation.")
+                return 2
+            cards.append((name, record["verdict"],
+                          "The fetched AWS guide documents the native restore limitation "
+                          "for a SQL Server source with a cross-Region replica."))
     if present:
         path = PROJECT_ROOT / "reports" / "presentation.html"
         path.parent.mkdir(parents=True, exist_ok=True)
