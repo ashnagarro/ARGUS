@@ -12,6 +12,7 @@ All work was done in phase order with mocked API tests, Git commits, and a backu
 | 9 | Repeatable four-scenario offline demo | Three runs with identical verdicts |
 | 9B | Rule advice and provenance, advisory notice, projector report, early Scholar stop | Full suite and offline act2/act3 reports |
 | 9C | Presentation page, documentation, tracked-file package | Full suite and package inspection |
+| 9D | Offline ARGUS Console with saved runs, evidence, permission timeline, learned rules, and savings | Full suite; secret-redaction and local HTML tests |
 
 The saved act3 before baseline used 13 AI calls and 42.51 seconds with R007 disabled. Once R007 was enabled, act3 was blocked by a deterministic rule with zero AI calls. This comparison uses the cached baseline and does not claim a general performance estimate.
 

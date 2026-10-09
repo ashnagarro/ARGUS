@@ -202,6 +202,20 @@ Done when: running demo all 3 times gives identical verdicts.
 - `scripts/package.ps1` packages committed project files into `dist/argus-demo.zip` using
   `git archive HEAD`; it excludes ignored credentials, caches, virtual environments, and ledgers.
 
+=== PHASE 9D: ARGUS Console ===
+- `python -m argus console [--open]` writes `reports/console.html`, one self-contained HTML file
+  with inline CSS and JavaScript. It works offline without a server or CDN.
+- Show ARGUS name and purpose plus totals for runs, NO-GO, GO-WITH-CONDITIONS, GO, learned rules,
+  and AI calls avoided.
+- A runs table from `ledger/runs/` shows local time, plan, coloured verdict badge, author,
+  AI calls, and seconds. Clicking a run expands findings, evidence quotes with source links and
+  retrieval dates, conditions, and agentic-loop steps as a vertical permission-aware timeline.
+- A learned-rule library shows rule ID, source finding, source document and retrieval date,
+  enforced status, and test status. A savings panel compares before/after calls and seconds
+  per learned rule.
+- Footer separates "Works now" from "Prototype / roadmap". Use projector-readable type.
+  Never include API keys or environment values; test the HTML for secret patterns and values.
+
 === OPTIONAL PHASES (only when I ask) ===
 10 Policy from English: python -m argus policy "<sentence>" compiles a plain-English policy into
    a rule + tests using the Phase 7 method. Flag policy_compiler.

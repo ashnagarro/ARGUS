@@ -88,6 +88,9 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--present", action="store_true",
                       help="Write an offline projector view to reports/presentation.html.")
 
+    console = commands.add_parser("console", help="Build the offline ARGUS Console HTML page.")
+    console.add_argument("--open", action="store_true", help="Open the generated page in a browser.")
+
     corpus = commands.add_parser("corpus", help="Manage reference documents.")
     corpus_commands = corpus.add_subparsers(dest="corpus_command", required=True)
     fetch = corpus_commands.add_parser("fetch", help="Fetch public reference documents.")
@@ -379,6 +382,9 @@ def run_check(
         "author": author, "changed_files": list(changed_files),
         "rule_findings": [asdict(finding) for finding in rule_findings],
         "ai_findings": [asdict(finding) for finding in ai_findings],
+        "conditions": list(report.conditions),
+        "trace_steps": list(report.trace_steps),
+        "ask_you": list(report.ask_you),
     }
     serialized = json.dumps(run_record, sort_keys=True, ensure_ascii=False)
     runs_dir = PROJECT_ROOT / "ledger" / "runs"
@@ -550,6 +556,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                             present=args.present)
         except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"argus demo: {error}", file=sys.stderr)
+            return 2
+    if args.command == "console":
+        try:
+            from .console import write_console
+
+            output = write_console(PROJECT_ROOT)
+            print(f"Console: {output}")
+            if args.open:
+                import webbrowser
+
+                webbrowser.open(output.as_uri())
+            return 0
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"argus console: {error}", file=sys.stderr)
             return 2
     if args.command == "corpus" and args.corpus_command == "fetch":
         try:

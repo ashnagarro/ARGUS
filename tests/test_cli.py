@@ -12,7 +12,7 @@ from argus import cli
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("command", [None, "check", "compile", "demo", "corpus", "corpus fetch", "tool", "tool search-corpus", "tool read-section", "tool verify-quote"])
+@pytest.mark.parametrize("command", [None, "check", "compile", "demo", "console", "corpus", "corpus fetch", "tool", "tool search-corpus", "tool read-section", "tool verify-quote"])
 def test_help_works(command: str | None) -> None:
     args = [sys.executable, "-m", "argus"]
     if command is not None:
@@ -24,7 +24,7 @@ def test_help_works(command: str | None) -> None:
     assert result.returncode == 0, result.stderr
     assert "usage:" in result.stdout.lower()
     if command is None:
-        for name in ("check", "compile", "demo", "corpus", "tool"):
+        for name in ("check", "compile", "demo", "console", "corpus", "tool"):
             assert name in result.stdout
     else:
         assert command.split()[-1] in result.stdout
