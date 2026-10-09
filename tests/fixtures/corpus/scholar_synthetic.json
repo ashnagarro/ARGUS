@@ -1,0 +1,26 @@
+{
+  "responses": [
+    {
+      "output": [
+        {"type": "function_call", "name": "search_corpus", "arguments": "{\"query\":\"fictional database replacement snapshot\"}", "call_id": "call_search"}
+      ],
+      "output_text": ""
+    },
+    {
+      "output": [
+        {"type": "function_call", "name": "read_section", "arguments": "{\"doc_id\":\"synthetic-alpha\",\"number\":2}", "call_id": "call_read"}
+      ],
+      "output_text": ""
+    },
+    {
+      "output": [
+        {"type": "function_call", "name": "verify_quote", "arguments": "{\"doc_id\":\"synthetic-alpha\",\"quote\":\"Before replacing the fictional database, copy its sample records to a separate test snapshot.\"}", "call_id": "call_verify"}
+      ],
+      "output_text": ""
+    },
+    {
+      "output": [],
+      "output_text": "{\"findings\":[{\"id\":\"A001\",\"resource\":\"aws_db_instance.synthetic\",\"change_type\":\"replace\",\"claim\":\"The fictional database needs a sample snapshot before replacement.\",\"evidence\":[{\"doc_id\":\"synthetic-alpha\",\"quote\":\"Before replacing the fictional database, copy its sample records to a separate test snapshot.\"}],\"severity\":\"medium\",\"recommended_action\":\"Copy sample records to the test snapshot first.\",\"confidence\":\"high\"}]}"
+    }
+  ]
+}

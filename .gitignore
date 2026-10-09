@@ -5,3 +5,5 @@ backup/
 .codex-home/
 reports/latest.md
 reports/latest.html
+ledger/traces/
+ledger/ledger.jsonl

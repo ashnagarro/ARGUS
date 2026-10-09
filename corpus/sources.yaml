@@ -1,5 +1,7 @@
 - doc_id: rds-sqlserver-upgrade
   url: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.SQLServer.html
+- doc_id: rds-sqlserver-upgrade-considerations
+  url: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_UpgradeDBInstance.SQLServer.Considerations.html
 - doc_id: rds-parameter-groups
   url: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.html
 - doc_id: rds-option-groups

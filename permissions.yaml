@@ -1,0 +1,10 @@
+read_only_tools:
+  - get_change
+  - search_corpus
+  - read_section
+  - verify_quote
+sensitive_resource_patterns:
+  - aws_iam_*
+  - aws_security_group*
+  - aws_kms_*
+write_actions_require_approval: true

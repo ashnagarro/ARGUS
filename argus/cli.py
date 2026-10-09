@@ -2,16 +2,37 @@
 
 import argparse
 from collections.abc import Sequence
+from dataclasses import asdict
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import sys
 from time import perf_counter
+import tomllib
+from uuid import uuid4
 
+from .corpus import load_corpus, read_section, search_corpus
 from .corpus_fetch import fetch_corpus
 from .parse_plan import parse_plan
+from .permissions import decide_permission, load_policy
 from .report import Report, render_terminal, write_reports
 from .rules import run_rules
 from .verdict import decide_verdict, merge_conditions
+from .verify import verify_quote
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _append_trace(run_id: str, event: dict) -> None:
+    trace_path = PROJECT_ROOT / "ledger" / "traces" / f"{run_id}.jsonl"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    with trace_path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(event, sort_keys=True, ensure_ascii=False) + "\n")
+
+
+def _settings() -> dict:
+    return tomllib.loads((PROJECT_ROOT / "argus.toml").read_text(encoding="utf-8"))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +49,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--report-dir", type=Path, default=Path("reports"),
         help="Directory for latest.md and latest.html (default: reports).",
     )
+    ai_mode = check.add_mutually_exclusive_group()
+    ai_mode.add_argument("--offline", action="store_true", help="Replay cached Scholar answers.")
+    ai_mode.add_argument("--live", action="store_true", help="Call the OpenAI API for uncovered changes.")
 
     compile_command = commands.add_parser(
         "compile", help="Compile an approved finding into a rule."
@@ -53,27 +77,123 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir", type=Path, default=Path("corpus"),
         help="Output directory (default: corpus).",
     )
+
+    tool = commands.add_parser("tool", help="Use read-only corpus tools.")
+    tool.add_argument("--corpus-dir", type=Path, default=Path("corpus"))
+    tool_commands = tool.add_subparsers(dest="tool_command", required=True)
+    search = tool_commands.add_parser("search-corpus", help="Search document sections.")
+    search.add_argument("query")
+    section = tool_commands.add_parser("read-section", help="Read one numbered section.")
+    section.add_argument("doc_id")
+    section.add_argument("number", type=int)
+    quote = tool_commands.add_parser("verify-quote", help="Check a quote against one document.")
+    quote.add_argument("doc_id")
+    quote.add_argument("quote")
     return parser
 
 
-def run_check(plan: Path, report_dir: Path = Path("reports")) -> int:
-    """Evaluate one plan and write the Phase 4 reports."""
+def run_tool(command: str, args: argparse.Namespace) -> int:
+    """Run a corpus lookup without invoking a model or changing documents."""
+    run_id = uuid4().hex
+    decision = decide_permission(
+        command.replace("-", "_"), "", is_write=False,
+        policy=load_policy(PROJECT_ROOT / "permissions.yaml"),
+    )
+    _append_trace(run_id, {
+        "event": "permission_decision", "tool": command,
+        "decision": decision.decision, "reason": decision.reason,
+    })
+    if not decision.approved:
+        print(f"Ask you: approval required for {command}")
+        return 2
+    documents = load_corpus(args.corpus_dir)
+    if command == "search-corpus":
+        matches = search_corpus(args.query, documents)
+        for section in matches:
+            print(f"{section.doc_id} #{section.number}: {section.heading}")
+        _append_trace(run_id, {"event": "tool_result", "tool": command, "matches": len(matches)})
+        return 0
+    if command == "read-section":
+        section = read_section(args.doc_id, args.number, documents)
+        print(f"{section.doc_id} #{section.number}: {section.heading}\n\n{section.text}")
+        _append_trace(run_id, {"event": "tool_result", "tool": command,
+                               "doc_id": args.doc_id, "number": args.number})
+        return 0
+    result = verify_quote(args.doc_id, args.quote, documents)
+    _append_trace(run_id, {"event": "tool_result", "tool": command,
+                           "doc_id": args.doc_id, "verified": result.verified,
+                           "reason": result.reason})
+    if result.verified:
+        print(f"VERIFIED {args.doc_id}")
+        return 0
+    print(f"UNVERIFIED {args.doc_id}: {result.reason}")
+    return 1
+
+
+def run_check(
+    plan: Path, report_dir: Path = Path("reports"), *,
+    scholar_mode: str | None = None,
+) -> int:
+    """Run rules and optionally research uncovered changes with Scholar."""
     started = perf_counter()
+    run_id = uuid4().hex
+    _append_trace(run_id, {"event": "run_start", "mode": scholar_mode or "rules"})
     changes = parse_plan(plan)
     rule_findings = tuple(run_rules(changes))
-    verdict = decide_verdict(rule_findings)
+    _append_trace(run_id, {"event": "rules_result", "changes": len(changes),
+                           "finding_ids": [item.rule_id for item in rule_findings]})
+    ai_findings = ()
+    ai_calls = 0
+    trace_steps: tuple[str, ...] = (f"checked {len(changes)} changes against deterministic rules",)
+    ask_you: tuple[str, ...] = ()
+    scholar_status = "not_run"
+    if scholar_mode is not None:
+        from .scholar import research_changes
+
+        model = _settings().get("scholar", {}).get("model", "gpt-6.1-sol")
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError('set [scholar] model = "gpt-6.1-sol" in argus.toml')
+        result = research_changes(
+            changes, rule_findings,
+            documents=load_corpus(PROJECT_ROOT / "corpus"),
+            model=model, live=scholar_mode == "live", run_id=run_id,
+            cache_dir=PROJECT_ROOT / ".cache" / "scholar",
+            trace_dir=PROJECT_ROOT / "ledger" / "traces",
+            permissions_path=PROJECT_ROOT / "permissions.yaml",
+            schema_path=PROJECT_ROOT / "schemas" / "finding.schema.json",
+        )
+        ai_findings = tuple(result.findings)
+        ai_calls = result.ai_calls
+        trace_steps += tuple(result.trace_steps)
+        ask_you = tuple(result.ask_you)
+        scholar_status = result.status
+    verdict = decide_verdict(rule_findings, ai_findings)
     report = Report(
         verdict=verdict,
         run_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         elapsed_seconds=perf_counter() - started,
-        ai_calls=0,
+        ai_calls=ai_calls,
         rule_findings=rule_findings,
-        ai_findings=(),
-        conditions=merge_conditions(rule_findings),
+        ai_findings=ai_findings,
+        conditions=merge_conditions(rule_findings, ai_findings),
+        trace_steps=trace_steps,
+        ask_you=ask_you,
     )
     write_reports(report, report_dir)
+    latest = PROJECT_ROOT / ".cache" / "last_run.json"
+    latest.parent.mkdir(parents=True, exist_ok=True)
+    latest.write_text(json.dumps({
+        "run_id": run_id, "plan": str(Path(plan).resolve()),
+        "verdict": verdict, "scholar_status": scholar_status,
+        "ai_calls": ai_calls, "elapsed_seconds": report.elapsed_seconds,
+        "ai_findings": [asdict(finding) for finding in ai_findings],
+    }, sort_keys=True, ensure_ascii=False), encoding="utf-8")
+    _append_trace(run_id, {"event": "run_end", "verdict": verdict,
+                           "scholar_status": scholar_status, "ai_calls": ai_calls})
     print(render_terminal(report))
-    return 1 if verdict == "NO-GO" else 0
+    if verdict == "NO-GO":
+        return 1
+    return 2 if scholar_status == "needs_human" else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -82,8 +202,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "check":
         try:
-            return run_check(args.plan, args.report_dir)
-        except (OSError, ValueError) as error:
+            mode = "live" if args.live else "offline" if args.offline else None
+            return run_check(args.plan, args.report_dir, scholar_mode=mode)
+        except (OSError, ValueError, RuntimeError) as error:
             print(f"argus check: {error}", file=sys.stderr)
             return 2
     if args.command == "corpus" and args.corpus_command == "fetch":
@@ -98,5 +219,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             else:
                 print(f"FAILED {result.doc_id}: {result.error}", file=sys.stderr)
         return 0 if all(result.status == "ok" for result in results) else 1
+    if args.command == "tool":
+        try:
+            return run_tool(args.tool_command, args)
+        except (OSError, KeyError, ValueError) as error:
+            print(f"argus tool: {error}", file=sys.stderr)
+            return 2
     print(f"argus {args.command}: not implemented yet", file=sys.stderr)
     return 2
