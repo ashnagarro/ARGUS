@@ -192,13 +192,28 @@ def _api_error_details(error: BaseException) -> dict[str, str | int]:
     if message:
         details["message"] = message
     body = getattr(error, "body", None)
+    response = getattr(error, "response", None)
     if body is None:
-        response = getattr(error, "response", None)
         if response is not None:
             try:
                 body = response.text
             except Exception:
                 body = None
+    if response is not None:
+        for attr, field in (("is_closed", "response_closed"), ("is_stream_consumed", "response_consumed")):
+            value = getattr(response, attr, None)
+            if type(value) is bool:
+                details[field] = value
+        request_id = getattr(error, "request_id", None)
+        if isinstance(request_id, str) and re.fullmatch(r"req_[A-Za-z0-9_-]{1,100}", request_id):
+            details["request_id"] = request_id
+        headers = getattr(response, "headers", None)
+        if headers is not None:
+            content_type = headers.get("content-type")
+            if isinstance(content_type, str):
+                mime = content_type.split(";", 1)[0].strip().lower()
+                if re.fullmatch(r"[a-z0-9.+-]+/[a-z0-9.+-]+", mime):
+                    details["content_type"] = mime
     api_type = getattr(error, "type", None)
     if not (isinstance(api_type, str) and api_type in _KNOWN_API_ERROR_TYPES) and isinstance(body, dict):
         nested = body.get("error")
@@ -209,6 +224,8 @@ def _api_error_details(error: BaseException) -> dict[str, str | int]:
     safe_body = _safe_error_text(body)
     if safe_body:
         details["body"] = safe_body
+    else:
+        details["body_state"] = "empty" if body == "" else "unavailable"
     return details
 
 
@@ -225,6 +242,8 @@ def _api_error_summary(details: Mapping[str, str | int]) -> str:
         reason += f" API message: {details['message']}"
     if details.get("body"):
         reason += f" API body: {details['body']}"
+    else:
+        reason += f" API body: {details.get('body_state', 'unavailable')}."
     return reason + " Review this change."
 
 

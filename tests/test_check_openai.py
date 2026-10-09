@@ -138,6 +138,7 @@ def test_probe_reports_multiple_isolated_failures_before_skipping_combined() -> 
     assert "schema rejected" in diagnostic
     assert "tools rejected" in diagnostic
     assert diagnostic.count("FAILED:") == 3
+    assert "body_state: unavailable" in diagnostic
     assert "5. Combined Scholar request shape: SKIPPED" in diagnostic
 
 

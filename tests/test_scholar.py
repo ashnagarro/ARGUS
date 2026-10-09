@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import jsonschema
 import pytest
 
-from argus.agent_loop import _redact_keys, _safe_error_text, run_agent_loop
+from argus.agent_loop import _api_error_details, _api_error_summary, _redact_keys, _safe_error_text, run_agent_loop
 from argus.corpus import load_corpus
 from argus.models import Change, RuleFinding
 from argus.permissions import decide_permission, load_policy
@@ -296,6 +296,27 @@ def test_raw_json_error_body_and_bearer_token_are_redacted() -> None:
     assert "[REDACTED]" in safe
     sdk_message = "Error code: 400 - {'error': {'api_key': 'arbitrarysecret', 'message': 'bad schema'}}"
     assert "arbitrarysecret" not in _safe_error_text(sdk_message)
+
+
+def test_openai_bad_request_with_empty_body_reports_that_limit() -> None:
+    import httpx2
+    from openai import BadRequestError
+
+    request = httpx2.Request("POST", "https://api.openai.com/v1/responses")
+    response = httpx2.Response(
+        400, request=request,
+        headers={"content-type": "text/plain; charset=utf-8", "x-request-id": "req_synthetic123"},
+    )
+    error = BadRequestError("Error code: 400", response=response, body=None)
+
+    details = _api_error_details(error)
+
+    assert details["status_code"] == 400
+    assert details["error_type"] == "BadRequestError"
+    assert details["body_state"] == "empty"
+    assert details["content_type"] == "text/plain"
+    assert details["request_id"] == "req_synthetic123"
+    assert "API body: empty" in _api_error_summary(details)
 
 
 def test_permission_policy_is_fail_closed_and_cache_redacts_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

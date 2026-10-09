@@ -38,7 +38,7 @@ def _format_api_error(error: Exception) -> str:
     parts = [str(details["error_type"])]
     if "status_code" in details:
         parts.append(f"HTTP {details['status_code']}")
-    for field in ("message", "body"):
+    for field in ("message", "body", "body_state", "request_id", "content_type", "response_closed", "response_consumed"):
         if field in details:
             parts.append(f"{field}: {details[field]}")
     return " | ".join(parts)
