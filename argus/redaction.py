@@ -52,3 +52,46 @@ def redact_value(value: Any, sensitivity: Any = None, *, field: str = "") -> Any
                                     or _CREDENTIAL_VALUE.search(value)):
         return REDACTED
     return value
+
+
+def redact_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize an entire Terraform export before saving an uploaded copy.
+
+    Sensitivity masks also cover custom attributes whose names do not look
+    like credentials. Their names are masked in configuration expressions too.
+    """
+    masked_names: set[str] = set()
+
+    def collect(mask: Any) -> None:
+        if isinstance(mask, dict):
+            for key, item in mask.items():
+                if item is True:
+                    masked_names.add(str(key))
+                else:
+                    collect(item)
+        elif isinstance(mask, list):
+            for item in mask:
+                collect(item)
+
+    def walk_masks(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in ("before_sensitive", "after_sensitive", "sensitive_values"):
+                    collect(item)
+                else:
+                    walk_masks(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk_masks(item)
+
+    walk_masks(plan)
+
+    def scrub(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: REDACTED if str(key) in masked_names else scrub(item)
+                    for key, item in value.items()}
+        if isinstance(value, list):
+            return [scrub(item) for item in value]
+        return value
+
+    return redact_value(scrub(plan))

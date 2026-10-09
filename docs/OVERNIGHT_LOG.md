@@ -7,3 +7,7 @@ Redacted Terraform sensitive-mask values and credential-like fields before creat
 ## Task 2 — Real Terraform plans (reverted)
 
 Two full-suite attempts failed after adding created-resource checks. The first was **3 failed, 256 passed** (registry/count/package expectations); the second was **1 failed, 258 passed** because an existing governance test expects the baseline to ignore a newly created unencrypted volume. All Task 2 code and fixture edits were reverted as requested. Act 7 remains unavailable; the supplied fixed-plan fixture currently has the same resource settings as the risky plan.
+
+## Task 3 — ARGUS Web
+
+Added a Python standard-library server on 127.0.0.1 with upload validation, a 5 MB limit, optional live research, six sample buttons, and escaped result pages. Uploads are redacted before saving under ignored `ledger/uploads/`; the fake password was absent from saved plans, the run record, ledger, and HTML in the integration test. Full suite: **261 passed**. `argus demo all` preserved Act 1 NO-GO, Act 2 GO-WITH-CONDITIONS, Act 3 NO-GO, and Act 5 NO-GO. The Act 7 fixed sample is labeled as unsafe until its fixture is corrected.

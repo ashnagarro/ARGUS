@@ -127,6 +127,9 @@ def build_parser() -> argparse.ArgumentParser:
     console_scope.add_argument("--all", action="store_true",
                                help="Include runs from every archived session.")
 
+    serve = commands.add_parser("serve", help="Serve the local plan upload page on 127.0.0.1.")
+    serve.add_argument("--port", type=int, default=8765, help="Local port (default: 8765).")
+
     ledger = commands.add_parser("ledger", help="Manage local run history.")
     ledger_commands = ledger.add_subparsers(dest="ledger_command", required=True)
     ledger_commands.add_parser("archive", help="Archive current ledger, runs, and traces.")
@@ -790,6 +793,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         except (OSError, ValueError, KeyError, TypeError) as error:
             print(f"argus console: {error}", file=sys.stderr)
+            return 2
+    if args.command == "serve":
+        try:
+            from .web import serve
+
+            serve(PROJECT_ROOT, args.port)
+            return 0
+        except (OSError, ValueError) as error:
+            print(f"argus serve: {error}", file=sys.stderr)
             return 2
     if args.command == "ledger" and args.ledger_command == "archive":
         try:
