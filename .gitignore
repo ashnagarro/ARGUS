@@ -12,3 +12,13 @@ ledger/traces/
 ledger/runs/
 ledger/ledger.jsonl
 ledger/archive/
+
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+examples/agent-demo/plan.out
+examples/agent-demo/plan.json
+
+*.egg-info/
+/plan.json
